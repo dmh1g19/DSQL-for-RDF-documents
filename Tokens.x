@@ -31,6 +31,7 @@ tokens :-
   pred        { \p s -> PredicateToken p }
   obj         { \p s -> ObjectToken p }
   AND         { \p s -> AndToken p }
+  EXPORT      { \p s -> ExportToken p}
   \(          { \p s -> ParenLToken p }
   \)          { \p s -> ParenRToken p }
   \[          { \p s -> BracketLToken p }
@@ -71,6 +72,7 @@ data Token =
   GetToken AlexPosn           |
   FromToken AlexPosn          |
   ImportToken AlexPosn        |
+  ExportToken AlexPosn        |
   SubjectToken AlexPosn       |
   PredicateToken AlexPosn     |
   ObjectToken AlexPosn        |
@@ -117,6 +119,7 @@ tokenPosn (NotToken (AlexPn _ l c) ) = (show l) ++ ":" ++ (show c)
 tokenPosn (IntToken (AlexPn _ l c) _) = (show l) ++ ":" ++ (show c)
 tokenPosn (VarToken (AlexPn _ l c) _) = (show l) ++ ":" ++ (show c)
 tokenPosn (ImportToken (AlexPn _ l c) ) = (show l) ++ ":" ++ (show c)
+tokenPosn (ExportToken (AlexPn _ l c)) = (show l) ++ ":" ++ (show c)
 tokenPosn (SubjectToken (AlexPn _ l c) ) = (show l) ++ ":" ++ (show c)
 tokenPosn (PredicateToken (AlexPn _ l c) ) = (show l) ++ ":" ++ (show c)
 tokenPosn (ObjectToken (AlexPn _ l c) ) = (show l) ++ ":" ++ (show c)

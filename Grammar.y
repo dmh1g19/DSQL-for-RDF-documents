@@ -10,11 +10,11 @@ import Tokens
   int         { IntToken _ $$ }
   var         { VarToken _ $$ }
   IMPORT      { ImportToken _ }
+  EXPORT      { ExportToken _}
   INTO        { IntoToken _ }
   WHERE       { WhereToken _ }
   IN          { InToken _ }
   AS          { AsToken _ }
-  FROM        { FromToken _ }
   GET         { GetToken _ }
   AND         { AndToken _ }
   OR          { OrToken _ }
@@ -55,14 +55,14 @@ stmts : stmt                                                                { [$
 
 stmt : exp ';'                                                              { $1 }
 
-exp : FROM '[' listElement ']' GET '[' listElement ']' exp                  { From $3 $7 $9 }
+exp : INTO exp exp                                                          { Into $2 $3 }
     | var                                                                   { Var $1 }
     | int                                                                   { AssignInt $1 }
-    | WHERE '{' compareLists '}' exp                                        { Where $3 $5 }
-    | INTO exp                                                              { Into $2 }
+    | GET '[' listElement ']' WHERE '{' compareLists '}'                    { Get $3 $7 }
     | IN exp                                                                { In $2 }
     | AS exp                                                                { As $2 } 
     | IMPORT exp AS exp                                                     { Import $2 $4 }
+	| EXPORT exp                                                            { Export $2}
     | IF exp THEN exp ELSE exp                                              { IfThenElse $2 $4 $6 }
     | int '<' int                                                           { LessThan $1 $3 }
     | int '>' int                                                           { MoreThan $1 $3 }
@@ -85,8 +85,8 @@ listElementContent : subj                                                   { Su
                    | false                                                  { FalseElem }
                    | exp                                                    { $1 }
 
-compareLists : '[' listElement ']'                                          { [$2] }
-             | '[' listElement ']' comparison compareLists                  { $2 : $5 }
+compareLists : exp '[' listElement ']'                                          { [($1, $3)] }
+             | exp '[' listElement ']' comparison compareLists                  { ($1, $3) : $6 }
 
 comparison : OR                                                             { Or }
            | AND                                                            { And }
@@ -99,9 +99,8 @@ parseError (t:ts) = error ("Parse error at line:column " ++ (tokenPosn t))
 data Expr = Var String
           | AssignInt Int
           | Import Expr Expr
-          | From [Expr] [Expr] Expr 
-          | Where [[Expr]] Expr
-          | Into Expr
+          | Into Expr Expr 
+          | Get [Expr] [(Expr, [Expr])]
           | In Expr
           | As Expr
           | IfThenElse Expr Expr Expr
@@ -122,5 +121,6 @@ data Expr = Var String
           | And
           | Or
 		  | FileLines [String]
+		  | Export Expr
   deriving (Eq,Show)
 }
