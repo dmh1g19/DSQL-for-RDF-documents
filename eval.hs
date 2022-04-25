@@ -66,14 +66,42 @@ eval1 (Import (Var var1) (Var var2), env, k) = readTTL (var1++".ttl") >>= \conte
 
 
 --Into
-eval1 (Into (Var var) e2, env, k) = return (e2, update env var $ FromLines [], IntoFrame:k)
+eval1 (Into (Var var) e2, env, k) = return (e2, update env var $ FileLines [], IntoFrame:k)
  
-
+--eval1 (Get list1 list2, env, IntoFrame:k) 
 --Export
 eval1 (Export (Var var) , env, k) = do writeFile (var++".ttl") $ exportContent var env
                                        return (AssignInt 0, env, k)
 
 
+getPosTurtles :: Expr -> (Expr, [Expr]) -> Environment -> Kontinuation -> (Environment, Kontinuation)
+getPosTurtles empVar ((Var var), list1) env k = (env', k')
+                                              where (FileLines content) = getValue var env
+                                                    writeLines = getLines content env list1
+
+
+--Apply the filters to the content of a ttl file to get what we want
+
+getLines :: FileLines -> Environment -> FileLines
+getLines content env [] = content
+{-
+getLines content env ((Subject):xs) = getLines content xs
+getLines content env ((Predicate):xs) = getLines content xs
+getLines content env ((Object):xs) = getLines content xs
+getLines content env ((SubjectIn (Var var)):xs) = getLines content' xs
+                                            where (FileLines varContent) = getValue var env
+                                                  varSubjs = map getSubj varContent
+                                                  (FileLines content') = [a | a <- content, ]
+-}
+--Get subject from a line of triple
+getSubj :: String -> String
+getSubj line = head $ words line
+
+getPred :: String -> String
+getPred line = head $ tail $ words line
+
+getObj :: String -> String
+getObj line = head $ tail $ reverse $ words line  
 
 exportContent :: String -> Environment -> String
 exportContent var env = intercalate "," x
