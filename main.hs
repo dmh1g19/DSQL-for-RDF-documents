@@ -15,7 +15,7 @@ import System.IO
 --  print $ toks!!0
 --  print $ parseCalc ([toks!!0])
 
-{-
+
 main = do
   (fileName : _ ) <- getArgs 
   sourceText <- readFile fileName
@@ -24,9 +24,3 @@ main = do
   putStrLn ("Parsed as " ++ (show parsedProg) ++ "\n")
   (_, env') <- eval(parsedProg, [], [])
   putStrLn ("Program finished with env -> " ++ show env')
--}
-
-main = do (fileName : _) <- getArgs
-          sText <- readTTL fileName
-          putStrLn (show sText)
-

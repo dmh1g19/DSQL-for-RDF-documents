@@ -1,0 +1,6 @@
+IMPORT foo AS A;
+IMPORT bar AS B;
+
+INTO C GET [subj,pred,obj] WHERE {A[subj,pred,obj] AND B[subj,pred,obj]};
+
+EXPORT C;
