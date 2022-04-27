@@ -1,0 +1,5 @@
+IMPORT foo AS A;
+
+INTO p2 GET [subj,pred,obj] WHERE {A[http://www.cw.org/#problem2,pred,true]};
+
+EXPORT p2;

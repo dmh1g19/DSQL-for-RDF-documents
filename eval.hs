@@ -28,6 +28,7 @@ eval (x:xs, env, k) = do (x', env', k') <- eval1 (x, env, k)
                          if (x' == x) && (isValue x') && (null k) then do
                          putStrLn ("Kontinuation -> " ++ show k')
                          putStrLn ("Line evaluated as -> " ++ show x')
+                         putStrLn (show env')
                          eval (xs, env', k')
                          else do eval (x':xs, env', k')
 
@@ -63,7 +64,7 @@ sepPOs (x:xs) = ([x] ++ x', xs')
 
 predListToTriple :: String -> [String]
 predListToTriple x = [sub ++ " " ++ predObj ++ " ." | predObj <- predObjs]
-                   where sub = getSubj x
+                   where sub = addTBrac $ getSubj x
                          predObjs = sepPredObjs $ (x \\ sub)
 
 isPredicateList :: String -> Bool
@@ -84,7 +85,7 @@ sepOs (x:xs) = ([x] ++ x', xs')
 
 objListToTriple :: String -> [String]
 objListToTriple x = [sub ++ " " ++ obj ++ " ." | obj <- objs]
-                   where sub = (getSubj x) ++ " " ++ (getPred x) ++ " "
+                   where sub = (addTBrac $ getSubj x) ++ " " ++ (addTBrac $ getPred x) ++ " "
                          objs = sepObjs $ (x \\ sub)
 
 isObjectList :: String -> Bool
@@ -100,7 +101,7 @@ getPrefix :: String -> (String, String)
 getPrefix ('@':'b':'a':'s':'e':' ':xs) = ("BASE", xs') where xs' = removeDot $ reverse xs
 getPrefix ('@':'p':'r':'e':'f':'i':'x':' ':x:':':' ':xs) = ([x], xs') where xs' = removeDot $ reverse xs
 
---Absolute triple 
+--Absolute triple
 absTriples :: [(String, String)] -> String -> String
 absTriples pMap x = intercalate " " applied
                   where applied = map (applyAbs pMap) $ words x
@@ -131,10 +132,10 @@ applyAbs vals x = x
 -- resolve list B into getting all absoulte triples
 getTriples :: [String] -> [String]
 getTriples [] = []
-getTriples content = triples
+getTriples content = [x | x <- triples, x /= ""]
                    where prefixes = filter (\a -> '@' `elem` a) content
                          normal = (content \\ prefixes)
-                         clean1 = concat $ map clean normal
+                         clean1 = concat $ map clean $ map replaceT normal
                          prefixMap = map getPrefix prefixes
                          triples = map (absTriples prefixMap) clean1
 
@@ -143,6 +144,11 @@ clean :: String -> [String]
 clean x | isPredicateList x = predListToTriple x
         | isObjectList x = objListToTriple x
         | otherwise = [x]
+
+replaceT :: String -> String
+replaceT [] = []
+replaceT (x:'>':'<':xs) = [x] ++ "> <" ++ (replaceT xs)
+replaceT (x:xs) = [x] ++ (replaceT xs)
 
 --Evaluation function
 eval1 :: State -> IO State
@@ -169,8 +175,7 @@ eval1 (Get list1 list2, env, IntoFrame:k) = return (AssignInt 0, env', k)
                                 where empVar = getEmptyVar env
                                       env' = getPosTurtles (Var empVar) list1 list2 env
 --Export
-eval1 (Export (Var var) , env, k) = do 
-                                       writeFile (var++".ttl") $ exportContent var env
+eval1 (Export (Var var) , env, k) = do writeFile (var++".ttl") $ exportContent var env
                                        return (AssignInt 0, env, k)
 
 
@@ -181,7 +186,6 @@ getPosTurtles (Var empVar) format (((Var var), list1):vars) env = getPosTurtles 
                                                     zipped = zip format list1
                                                     (FileLines writeLines) = getLines zipped env (FileLines content)
                                                     (FileLines lastContent) = getValue empVar env
-                                                    env'' = removeInEnv env empVar
                                                     env' = update env empVar $ (FileLines $ lastContent ++ writeLines)
 
 
@@ -275,15 +279,34 @@ getLines' (Predicate, (Var var)) _ (FileLines content) = FileLines [a | a <- con
 getLines' (Object, (Var var)) _ (FileLines content) = FileLines [a | a <- content, (getObj a) == var]
 
 
+--True
+getLines' (Subject, TrueElem) _ (FileLines content) = FileLines [a | a <- content, (getSubj a) == "true"]
+getLines' (Predicate, TrueElem) _ (FileLines content) = FileLines [a | a <- content, (getPred a) == "true"]
+getLines' (Object, TrueElem) _ (FileLines content) = FileLines [a | a <- content, (getObj a) == "true"]
+
+--False
+getLines' (Subject, FalseElem) _ (FileLines content) = FileLines [a | a <- content, (getSubj a) == "false"]
+getLines' (Predicate, FalseElem) _ (FileLines content) = FileLines [a | a <- content, (getPred a) == "false"]
+getLines' (Object, FalseElem) _ (FileLines content) = FileLines [a | a <- content, (getObj a) == "false"]
+
+getLines' _ _ x = x
+
 --Get subject from a line of triple
+removeTBrac :: String -> String
+removeTBrac ('<':line) = init line
+removeTBrac line = line
+
+addTBrac :: String -> String
+addTBrac x = "<" ++ x ++ ">"
+ 
 getSubj :: String -> String
-getSubj line = head $ words line
+getSubj line = removeTBrac $ head $ words line
 
 getPred :: String -> String
-getPred line = head $ tail $ words line
+getPred line = removeTBrac $ head $ tail $ words line
 
 getObj :: String -> String
-getObj line = head $ tail $ reverse $ words line  
+getObj line = removeTBrac $ head $ tail $ reverse $ words line  
 
 removeInEnv :: Environment -> String -> Environment
 removeInEnv env var = [a | a <- env, fst a /= var]
@@ -292,8 +315,20 @@ getEmptyVar :: Environment -> String
 getEmptyVar ((x,y):env) | y == FileLines [] = x
                         | otherwise = getEmptyVar env
 
+cleanSort :: [String] -> [String]
+cleanSort x = sortBySP x
+
+sortBySP :: [String] -> [String]
+sortBySP x = sortBy (\a b -> compare (getSP a) (getSP b)) x
+
+getSP :: String -> String
+getSP x = (getSubj x) ++ " " ++ (getPred x)
+
+sortByPredicate :: [String] -> [String]
+sortByPredicate x = sortBy (\a b -> compare (getPred a) (getPred b)) x
+
 exportContent :: String -> Environment -> String
-exportContent var env = intercalate "\n" x
+exportContent var env = intercalate "\n" $ cleanSort x
                       where (FileLines x) = getValue var env
 
 

@@ -11,8 +11,8 @@ happyComp: Grammar.y Grammar.hs
 	happy Grammar.y
 	stack ghc Grammar.hs
 
-mainComp: main.hs
-	stack ghc main.hs
+mainComp: Stql.hs
+	stack ghc Stql.hs
 
 clean: 
 	rm Grammar.info Tokens.hi Tokens.o Grammar.o main.o main.hi .*.swp
