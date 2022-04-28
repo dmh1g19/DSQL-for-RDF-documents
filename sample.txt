@@ -1,0 +1,12 @@
+[Import (Var "foo") (Var "A"),
+
+IfThenElse 
+
+CONDITION : (Base (Var "A") (InnerOr (InnerBase (LTCond Object 0)) (InnerBase (GTCond Object 99)))) 
+
+TRUEBLOCK : (Into (Var "out5") (Write [(Var "A",[Subject,Var "http://www.cw.org/problem5/#inRange",FalseElem])])) 
+
+FALSEBLOCK : (Into (Var "out5") (Write [(Var "A",[Subject,Predicate,ObjectPlus 1]),(Var "A",[Subject,Var "http://www.cw.org/problem5/#inRange",TrueElem])]))
+
+
+,Export (Var "out5")]

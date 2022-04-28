@@ -16,6 +16,8 @@ tokens :-
   $digit+     { \p s -> IntToken p (read s) }
   IMPORT      { \p s -> ImportToken p }
   WRITE       { \p s -> WriteToken p }
+  WRITETRUE   { \p s -> WriteTrueToken p }
+  WRITEFALSE  { \p s -> WriteFalseToken p }
   INTO        { \p s -> IntoToken p }
   WHERE       { \p s -> WhereToken p }
   IN          { \p s -> InToken p }
@@ -32,6 +34,7 @@ tokens :-
   obj         { \p s -> ObjectToken p }
   AND         { \p s -> AndToken p }
   EXPORT      { \p s -> ExportToken p}
+  NOTHING    { \p s -> NothingGToken p}
   \(          { \p s -> ParenLToken p }
   \)          { \p s -> ParenRToken p }
   \[          { \p s -> BracketLToken p }
@@ -58,7 +61,10 @@ data Token =
   VarToken AlexPosn String    |
   InToken AlexPosn            |
   WriteToken AlexPosn         |
+  WriteTrueToken AlexPosn         |
+  WriteFalseToken AlexPosn         |
   NotEqualToken AlexPosn      |
+  NothingGToken AlexPosn       |
   LessThanEqualToken AlexPosn |
   MoreThanEqualToken AlexPosn |
   PlusToken AlexPosn          |
@@ -98,6 +104,8 @@ data Token =
 tokenPosn :: Token -> String
 tokenPosn (InToken (AlexPn _ l c) ) = (show l) ++ ":" ++ (show c)
 tokenPosn (WriteToken (AlexPn _ l c) ) = (show l) ++ ":" ++ (show c)
+tokenPosn (WriteTrueToken (AlexPn _ l c) ) = (show l) ++ ":" ++ (show c)
+tokenPosn (WriteFalseToken (AlexPn _ l c) ) = (show l) ++ ":" ++ (show c)
 tokenPosn (NotEqualToken (AlexPn _ l c) ) = (show l) ++ ":" ++ (show c)
 tokenPosn (LessThanEqualToken (AlexPn _ l c) ) = (show l) ++ ":" ++ (show c)
 tokenPosn (MoreThanEqualToken (AlexPn _ l c) ) = (show l) ++ ":" ++ (show c)
@@ -131,4 +139,5 @@ tokenPosn (BracketRToken (AlexPn _ l c) ) = (show l) ++ ":" ++ (show c)
 tokenPosn (AngBracketLToken (AlexPn _ l c) ) = (show l) ++ ":" ++ (show c)
 tokenPosn (AngBracketRToken (AlexPn _ l c) ) = (show l) ++ ":" ++ (show c)
 tokenPosn (EqualsToken (AlexPn _ l c) ) = (show l) ++ ":" ++ (show c)
+tokenPosn (NothingGToken (AlexPn _ l c) ) = (show l) ++ ":" ++ (show c)
 }

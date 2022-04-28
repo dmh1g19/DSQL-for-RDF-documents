@@ -15,12 +15,17 @@ import System.IO
 --  print $ toks!!0
 --  print $ parseCalc ([toks!!0])
 
+main :: IO ()
+main = catch main' noParse
 
-main = do
+main' = do
   (fileName : _ ) <- getArgs 
   sourceText <- readFile fileName
-  putStrLn ("Parsing : " ++ sourceText)
   let parsedProg = reverse $ parseCalc (alexScanTokens sourceText)
-  putStrLn ("Parsed as " ++ (show parsedProg) ++ "\n")
-  (_, env') <- eval(parsedProg, [], [])
-  putStrLn ("Program finished with env -> " ++ show env')
+  (_, ((valName, FileLines (x:xs)):xss)) <- eval(parsedProg, [], [])
+  putStrLn x
+
+noParse :: ErrorCall -> IO ()
+noParse e = do let err =  show e
+               hPutStr stderr err
+               return ()

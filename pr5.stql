@@ -1,0 +1,8 @@
+IMPORT foo AS A;
+
+IF {A[obj < 0 OR obj > 99]} THEN
+INTO out5 WRITETRUE {A[subj,http://www.cw.org/problem5/#inRange,false]}
+ELSE IF {A[obj >= 0 AND obj <= 99]} THEN
+INTO out5 WRITETRUE {A[subj,pred,obj + 1] AND A[subj,http://www.cw.org/problem5/#inRange,true]}
+ELSE NOTHING;
+EXPORT out5;
