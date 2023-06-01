@@ -1,7 +1,0 @@
-IMPORT foo AS A;
-
-INTO out3 GET [subj,pred,obj] WHERE {A[subj,http://www.cw.org/problem3/#predicate1,obj]
-              OR A[subj,http://www.cw.org/problem3/#predicate2,obj]
-              OR A[subj,http://www.cw.org/problem3/#predicate3,obj]};
-
-EXPORT out3;

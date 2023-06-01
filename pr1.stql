@@ -1,6 +1,0 @@
-IMPORT foo AS A;
-IMPORT bar AS B;
-
-INTO out1 GET [subj,pred,obj] WHERE {A[subj,pred,obj] AND B[subj,pred,obj]};
-
-EXPORT out1;
