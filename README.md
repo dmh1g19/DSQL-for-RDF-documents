@@ -151,6 +151,7 @@ Conditionals are used to filter through more complex conditions
 
 ## 5 Grammar
 
+``` 
 ⟨prog⟩::= ⟨stmt⟩
 | ⟨prog⟩ ⟨stmt⟩
 
@@ -205,6 +206,8 @@ Conditionals are used to filter through more complex conditions
 
 ⟨alpha⟩::= [a-z]
 | [A-Z]
+
+```
 
 ## 6 Example code
 
