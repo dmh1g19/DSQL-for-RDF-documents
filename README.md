@@ -151,6 +151,15 @@ WHERE [subj,pred,obj]...
 WHERE B[subj,pred IN A,obj]...
 WHERE A[subj IN B,pred IN C,obj IN D]...
 ```
+
+A list element may also be a literal, which filters that position in a **WHERE** block and is
+written out verbatim in a **WRITE** block. Integers may be negative.
+
+```
+WHERE A[subj,pred,50]...
+WHERE A[subj,pred,-50]...
+WRITETRUE {A[subj,http://www.cw.org/neg/#flag,-1]}...
+```
 ### 4.8 Conditionals
 
 Conditionals are used to filter through more complex conditions. A condition compares a triple
@@ -161,6 +170,7 @@ combine with **AND**, **OR** and **NOT**.
 IF {A[obj >= 0 AND obj <= 99]} THEN...
 IF {A[obj != 50]} THEN...
 IF {A[NOT obj > 10 AND obj != 1]} THEN...
+IF {A[obj < -10]} THEN...
 ```
 
 **NOT** binds tighter than **AND** and **OR**, so `NOT obj > 10 AND obj != 1` reads as
@@ -202,33 +212,32 @@ INTO out1 GET [subj,pred,obj] WHERE {A[subj,pred,obj]};
 | ⟨ifStatement⟩
 | (⟨exp⟩)
 
-⟨function⟩ ::= IMPORT ⟨exp⟩ AS ⟨exp⟩
-| INTO ⟨exp⟩ ⟨exp⟩
+⟨function⟩ ::= IMPORT ⟨var⟩ AS ⟨var⟩
+| INTO ⟨var⟩ ⟨exp⟩
 | GET [⟨list⟩] WHERE {⟨listCompare⟩}
-| GET [⟨list⟩] FROM ⟨exp⟩
+| GET [⟨list⟩] FROM ⟨var⟩
 | WRITE {⟨listCompare⟩}
 | WRITETRUE {⟨listCompare⟩}
 | WRITEFALSE {⟨listCompare⟩}
 | IN ⟨exp⟩
 | AS ⟨exp⟩
-| EXPORT ⟨exp⟩
+| EXPORT ⟨var⟩
 
 ⟨operator⟩ ::= < | > | + | - | <= | >=
 
 ⟨ifStatement⟩ ::= IF {⟨conditions⟩} THEN ⟨exp⟩ ELSE ⟨exp⟩
 
-⟨conditions⟩ ::= ⟨exp⟩[⟨condition⟩]
-| ⟨exp⟩[⟨condition⟩] OR ⟨conditions⟩
-| ⟨exp⟩[⟨condition⟩] AND ⟨conditions⟩
+⟨conditions⟩ ::= ⟨var⟩[⟨condition⟩]
+| ⟨var⟩[⟨condition⟩] OR ⟨conditions⟩
+| ⟨var⟩[⟨condition⟩] AND ⟨conditions⟩
 
 ⟨condition⟩ ::= ⟨condStatement⟩
 | ⟨condStatement⟩ OR ⟨condition⟩
 | ⟨condStatement⟩ AND ⟨condition⟩
 
 ⟨condStatement⟩ ::= ⟨bool⟩
-| ⟨triple⟩ ⟨comparator⟩ ⟨int⟩
+| ⟨triple⟩ ⟨comparator⟩ ⟨number⟩
 | NOT ⟨condStatement⟩
-| ⟨exp⟩
 
 ⟨comparator⟩ ::= < | > | <= | >= | = | !=
 
@@ -237,19 +246,22 @@ INTO out1 GET [subj,pred,obj] WHERE {A[subj,pred,obj]};
 
 ⟨listContent⟩ ::= ⟨triple⟩
 | ⟨bool⟩
+| ⟨number⟩
 | ⟨exp⟩
 
 ⟨triple⟩ ::= subj | pred | obj
 | subj IN ⟨var⟩ | pred IN ⟨var⟩ | obj IN ⟨var⟩
-| subj + ⟨int⟩ | pred + ⟨int⟩ | obj + ⟨int⟩
-| subj - ⟨int⟩ | pred - ⟨int⟩ | obj - ⟨int⟩
+| subj + ⟨number⟩ | pred + ⟨number⟩ | obj + ⟨number⟩
+| subj - ⟨number⟩ | pred - ⟨number⟩ | obj - ⟨number⟩
 
-⟨listCompare⟩ ::= ⟨exp⟩[⟨list⟩]
-| ⟨exp⟩[⟨list⟩] ⟨comparison⟩ ⟨listCompare⟩
+⟨listCompare⟩ ::= ⟨var⟩[⟨list⟩]
+| ⟨var⟩[⟨list⟩] ⟨comparison⟩ ⟨listCompare⟩
 
 ⟨comparison⟩ ::= OR | AND
 
 ⟨bool⟩ ::= true | false
+
+⟨number⟩ ::= ⟨int⟩ | -⟨int⟩
 
 ⟨int⟩ ::= [0-9]+
 
@@ -330,8 +342,9 @@ make clean
 apart again. It needs **python3-markdown** and **google-chrome**; the other targets do not.
 
 The **tests** directory holds the input turtle files, the example programs **pr1.stql** to
-**pr9.stql**, and their expected output under **tests/expected**. A program is run in a scratch
+**pr10.stql**, and their expected output under **tests/expected**. A program is run in a scratch
 directory and the file its **EXPORT** writes is compared against the recorded expectation.
+**tests/bad** holds programs that must be rejected: each one has to exit non-zero and say why.
 Failures are reported per test and **make test** exits non-zero.
 
 ## 10 Changes since submission
@@ -358,6 +371,12 @@ Lexer and parser
 - **FROM**, **NOT** and **!=** were produced by the lexer but absent from the grammar. They are
   now accepted, with the meanings given in sections 4.8 and 4.9.
 - An undocumented **IMPORT ... AS ... {var}** rule that no evaluator clause handled was removed.
+- **IMPORT**, **INTO**, **EXPORT**, **FROM**, a **WHERE** clause and an **IF** condition all
+  required a variable in the evaluator but accepted any expression in the grammar, so a mistake
+  such as `INTO 5 ...` parsed and then died with a pattern match failure. The grammar now
+  requires a variable in each of those positions, so those mistakes are parse errors that give a
+  line and column. A bare expression is no longer accepted as a condition either, since nothing
+  ever evaluated one.
 - **IN** took an arbitrary expression, which made `subj IN 5 < 3` ambiguous - it could parse as
   `(subj IN 5) < 3` or as `subj IN (5 < 3)`. Every evaluator clause only ever handled a variable
   there, so **IN** now takes a variable and the four remaining shift/reduce conflicts are gone.
@@ -381,6 +400,10 @@ Evaluation
 - Prefixed names were corrupted inside predicate and object lists, and only single character
   prefix names were recognised.
 - Multi-variable **IF** conditions crashed.
+- Integers were not first class the way booleans and URIs were. A negative literal did not parse
+  at all, so the negative objects in the sample data could not be queried; an integer literal used
+  as a filter was silently ignored; and one written into an output list produced a malformed
+  triple. All three now work, which covers the unary minus that section 8 asks for.
 
 Error handling
 

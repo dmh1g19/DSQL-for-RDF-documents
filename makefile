@@ -1,6 +1,7 @@
 # Build:  make
-# Test:   make test    (runs tests/prN.stql, diffs the outN.ttl it writes
-#                       against tests/expected/outN.ttl)
+# Test:   make test    (runs tests/prN.stql and diffs the outN.ttl it writes
+#                       against tests/expected/outN.ttl, then checks every
+#                       program in tests/bad is rejected with a message)
 # Report: make report  (regenerates rdf.pdf from README.md)
 # Clean:  make clean
 
@@ -8,7 +9,7 @@ GHC   = ghc
 ALEX  = alex
 HAPPY = happy
 
-TESTS = 1 2 3 4 5 6 7 8 9
+TESTS = 1 2 3 4 5 6 7 8 9 10
 
 stql: Tokens.hs Grammar.hs Eval.hs Stql.hs
 	$(GHC) -o stql Stql.hs
@@ -28,6 +29,17 @@ test: stql
 	    echo "pr$$i ok"; \
 	  else \
 	    echo "pr$$i FAILED"; fail=1; \
+	  fi; \
+	done; \
+	cp tests/bad/*.stql .testrun/; \
+	for f in tests/bad/*.stql; do \
+	  b=`basename $$f`; \
+	  if ( cd .testrun && ../stql $$b >/dev/null 2>msg ); then \
+	    echo "bad/$$b FAILED (was accepted)"; fail=1; \
+	  elif [ ! -s .testrun/msg ]; then \
+	    echo "bad/$$b FAILED (no message on stderr)"; fail=1; \
+	  else \
+	    echo "bad/$$b ok (rejected)"; \
 	  fi; \
 	done; \
 	rm -rf .testrun; exit $$fail

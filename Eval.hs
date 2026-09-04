@@ -5,6 +5,7 @@ import System.IO
 import Control.Monad ()
 import Control.Exception
 import Data.List
+import qualified Data.Set as Set
 import System.Environment ()
 import Data.Maybe
 
@@ -15,13 +16,29 @@ readTTL file = readFile file >>= \content -> return (lines content)
 data Frame = AsFrame String | IntoFrame String
       deriving (Show, Eq)
 
+--Which lines a WRITE form emits, given the per-line flags its IF recorded
+data WriteMode = OnTrue | OnFalse | Always
+      deriving (Show, Eq)
+
+--Per-variable entries the IF machinery keeps in the environment: the flags a
+--condition produced, and the lines an ELSE branch may still see
+condKey, maskKey :: String -> String
+condKey var = "IF-" ++ var
+maskKey var = "ELSE-" ++ var
+
 type Environment = [(String, Expr)]
 
 type Kontinuation = [Frame]
 
+--Per line of a file: whether an IF condition matched it, and the line itself
+type Flags = [(Bool, String)]
+
+--Those flags for each variable an IF condition mentioned
+type CondFlags = [(String, Flags)]
+
 type State = (Expr, Environment, Kontinuation)
 
---Continuous evaluation until terminatable
+--Step every statement of the program to a value in turn
 eval :: ([Expr], Environment, Kontinuation) -> IO ([Expr], Environment)
 eval ([], env, _) = return ([], env)
 eval (x:xs, env, k) = do (x', env', k') <- eval1 (x, env, k)
@@ -37,21 +54,15 @@ evalBlock (x, env, k) = do (x', env', k') <- eval1 (x, env, k)
                              then return (env', k')
                              else evalBlock (x', env', k')
 
---Check if a string is numeric
+--Does a string parse as a whole integer and nothing else
+isInteger :: String -> Bool
 isInteger s = case reads s :: [(Integer, String)] of
   [(_, "")] -> True
   _         -> False
  
-isDouble s = case reads s :: [(Double, String)] of
-  [(_, "")] -> True
-  _         -> False
- 
-isNumeric :: String -> Bool
-isNumeric s = isInteger s || isDouble s
-
 --Look up the value of given string in environment
 getValue :: String -> Environment -> Expr
-getValue x [] = error $ "Not Found : Value binding for given variable" ++ x
+getValue x [] = error $ "Not found : no value bound to " ++ x
 getValue x ((y,e):env) | x == y = e
                        | otherwise = getValue x env
  
@@ -146,14 +157,14 @@ splitPrefix (x:xs) = ([x] ++ x', xs') where (x', xs') = splitPrefix xs
 applyAbs :: [(String, String)] -> String -> String
 applyAbs _ [] = []
 applyAbs _ ('.':[]) = "."
-applyAbs _ x@('<':'h':'t':'t':'p':':':xs) = x
+applyAbs _ x@('<':'h':'t':'t':'p':':':_) = x
 applyAbs vals x | (head x == '<') && (last x == '>') = (init $ getVals "BASE" vals) ++ (tail x)
 applyAbs vals x | ':' `elem` x = exten ++ ys ++ ">"
                  where (y,ys) = splitPrefix x
                        prefixVal = init $ getVals y vals
-                       exten | isSubsequenceOf "http://" prefixVal = prefixVal
+                       exten | isInfixOf "http://" prefixVal = prefixVal
                              | otherwise = (init $ getVals "BASE" vals) ++ (tail prefixVal)
-applyAbs vals x = x
+applyAbs _ x = x
 --Get Absolute Triples
 --Step By Step:
 -- Get all prefixes in one list (A)
@@ -164,8 +175,7 @@ applyAbs vals x = x
 getTriples :: [String] -> [String]
 getTriples [] = []
 getTriples content = [x | x <- triples, x /= ""]
-                   where prefixes = filter (\a -> '@' `elem` a) content
-                         normal = (content \\ prefixes)
+                   where (prefixes, normal) = partition (elem '@') content
                          clean1 = concat $ map clean $ map replaceT normal
                          prefixMap = map getPrefix prefixes
                          triples = map (absTriples prefixMap) clean1
@@ -182,84 +192,72 @@ replaceT (x:'>':'<':xs) = [x] ++ "> <" ++ (replaceT xs)
 replaceT (x:xs) = [x] ++ (replaceT xs)
 
 --Writing to File
-writeContent :: String -> String -> [(Expr, [Expr])] -> Environment -> Environment
+writeContent :: WriteMode -> String -> [(Expr, [Expr])] -> Environment -> Environment
 writeContent _ _ [] env = env
-writeContent mode empVar ((Var var, list1):xs) env = writeContent mode empVar xs env'
-                                              where (StoreLines ifVar) = getValue ("IF-"++var) env
-                                                    env' = foldl writeLine env ifVar
-                                                    writeLine e (b, s) | keep b = writeUp empVar s list1 e
-                                                                       | otherwise = e
-                                                    keep b | mode == "True" = b
-                                                           | mode == "False" = not b
-                                                           | otherwise = True
-
-writeUp :: String -> String -> [Expr] -> Environment -> Environment
-writeUp empVar s [] env = update env empVar (FileLines $ lastContent ++ [s])
-                        where (FileLines lastContent) = getValue empVar env
-writeUp empVar s expr env = update env empVar (FileLines $ lastContent ++ [newContent])
-                          where (FileLines lastContent) = getValue empVar env
-                                newContent = formWords s expr
+writeContent mode out ((Var var, list1):xs) env = writeContent mode out xs env'
+                              where (StoreLines flags) = getValue (condKey var) env
+                                    (FileLines existing) = getValue out env
+                                    env' = update env out (FileLines (existing ++ written))
+                                    written = [render l | (b, l) <- flags, keep mode b]
+                                    render l | null list1 = l
+                                             | otherwise = formWords l list1
+                                    keep OnTrue b = b
+                                    keep OnFalse b = not b
+                                    keep Always _ = True
 
 formWords :: String -> [Expr] -> String
 formWords _ [] = "."
 formWords s (x:xs) = (getWord s x) ++ " " ++ formWords s xs
 
+--One element of a written triple, taken from the line being written
 getWord :: String -> Expr -> String
-getWord s (Subject) = addTBrac $ getSubj s 
-getWord s (Predicate) = addTBrac $ getPred s
-getWord s (Object) | isSubsequenceOf "http://" val = addTBrac val
-                   | otherwise = val
-                   where val = getObj s
-getWord _ (Var var) | isSubsequenceOf "http://" var = addTBrac var
-                    | otherwise = var
-getWord _ (TrueElem) = "true"
-getWord _ (FalseElem) = "false"
-getWord s (SubjectPlus i) = shiftNum (getSubj s) i
-getWord s (PredicatePlus i) = shiftNum (getPred s) i
-getWord s (ObjectPlus i) = shiftNum (getObj s) i
-getWord s (SubjectMinus i) = shiftNum (getSubj s) (negate i)
-getWord s (PredicateMinus i) = shiftNum (getPred s) (negate i)
-getWord s (ObjectMinus i) = shiftNum (getObj s) (negate i)
-getWord s _ = s
+getWord l Subject   = addTBrac (getSubj l)
+getWord l Predicate = addTBrac (getPred l)
+getWord l Object    = addObjBrac (getObj l)
+getWord _ (Var v)   = addObjBrac v
+getWord _ (AssignInt n) = show n
+getWord _ TrueElem  = "true"
+getWord _ FalseElem = "false"
+getWord l e         = fromMaybe l (triplePart e l)
 
 --Shift a numeric triple position by n; a non-numeric value is left as it is
 shiftNum :: String -> Int -> String
 shiftNum v n | isInteger val = show (read val + n)
              | otherwise = v
              where val = cleanNumeric v
---Evaluating IF Statemtnets
+--Evaluating IF statements
 
 --Lines a branch may still see; with no enclosing ELSE every line is eligible
 lineMask :: String -> Environment -> [Bool]
-lineMask var env = case lookup ("ELSE-" ++ var) env of
+lineMask var env = case lookup (maskKey var) env of
                      Just (StoreLines ms) -> map fst ms
                      _                    -> repeat True
 
 --Restrict freshly evaluated flags to the lines this branch may still see
-maskConds :: Environment -> [(String, [(Bool, String)])] -> [(String, [(Bool, String)])]
+maskConds :: Environment -> CondFlags -> CondFlags
 maskConds env conds = [(v, zipWith keep (lineMask v env) fs) | (v, fs) <- conds]
                     where keep m (b, l) = (m && b, l)
 
 --An ELSE branch sees exactly the lines its IF condition did not match
-elseMask :: [(String, [(Bool, String)])] -> Environment -> Environment
+elseMask :: CondFlags -> Environment -> Environment
 elseMask conds env = foldl add env conds
-                   where add e (v, fs) = update e ("ELSE-" ++ v) $ StoreLines
+                   where add e (v, fs) = update e (maskKey v) $ StoreLines
                                            (zipWith rest (lineMask v e) fs)
                          rest m (b, l) = (m && not b, l)
 
 --Put the enclosing mask back, so later statements are unaffected
-dropMask :: [(String, [(Bool, String)])] -> Environment -> Environment -> Environment
+dropMask :: CondFlags -> Environment -> Environment -> Environment
 dropMask conds outer env = foldl put env conds
-                         where put e (v, fs) = update e ("ELSE-" ++ v) $
+                         where put e (v, fs) = update e (maskKey v) $
                                  fromMaybe (StoreLines [(True, l) | (_, l) <- fs])
-                                           (lookup ("ELSE-" ++ v) outer)
+                                           (lookup (maskKey v) outer)
 
-updateEC :: [(String, [(Bool, String)])] -> Environment -> Environment
+updateEC :: CondFlags -> Environment -> Environment
 updateEC [] env = env
 updateEC ((var, list1):xs) env = updateEC xs $ env'
-                               where env' = update env ("IF-"++var) $ StoreLines list1
+                               where env' = update env (condKey var) $ StoreLines list1
 
-evalCond' :: Expr -> Environment -> [(String, [(Bool, String)])]
+evalCond' :: Expr -> Environment -> CondFlags
 evalCond' (Base (Var var) innerCond) env = [(var, allVals)]
                                          where (FileLines varVals) = getValue var env
                                                allVals = map (\a -> (applyCond innerCond a, a)) varVals
@@ -267,8 +265,7 @@ evalCond' (OrCond v c rest) env = mergeConds (||) (evalCond' (Base v c) env) (ev
 evalCond' (AndCond v c rest) env = mergeConds (&&) (evalCond' (Base v c) env) (evalCond' rest env)
 
 --Flags for the same variable combine pointwise; different variables are kept apart
-mergeConds :: (Bool -> Bool -> Bool) -> [(String, [(Bool, String)])]
-              -> [(String, [(Bool, String)])] -> [(String, [(Bool, String)])]
+mergeConds :: (Bool -> Bool -> Bool) -> CondFlags -> CondFlags -> CondFlags
 mergeConds op as bs = [(v, combine v fs) | (v, fs) <- as]
                       ++ [b | b@(v, _) <- bs, isNothing (lookup v as)]
                     where combine v fs = maybe fs (zipWith join fs) (lookup v bs)
@@ -287,7 +284,8 @@ applyCond (InnerOr c1 c2) x = (applyCond c1 x) || (applyCond c2 x)
 --InnerAnd
 applyCond (InnerAnd c1 c2) x = (applyCond c1 x) && (applyCond c2 x)
 
---Triple Application
+--Does one condition hold of a line
+applyTriple :: Expr -> String -> Bool
 applyTriple (LTCond trip intVal) x = cmpNum (<) trip intVal x
 applyTriple (GTCond trip intVal) x = cmpNum (>) trip intVal x
 applyTriple (LTECond trip intVal) x = cmpNum (<=) trip intVal x
@@ -307,22 +305,21 @@ cmpNum op trip intVal x | isInteger val = op (read val) (toInteger intVal)
                         | otherwise = False
                         where val = cleanNumeric $ getTripleVal trip x
 
+--The value a triple expression names in a line, with any +n or -n applied
+triplePart :: Expr -> String -> Maybe String
+triplePart e l | Just at <- position e = Just (at l)
+triplePart (SubjectPlus i) l    = Just (shiftNum (getSubj l) i)
+triplePart (PredicatePlus i) l  = Just (shiftNum (getPred l) i)
+triplePart (ObjectPlus i) l     = Just (shiftNum (getObj l) i)
+triplePart (SubjectMinus i) l   = Just (shiftNum (getSubj l) (negate i))
+triplePart (PredicateMinus i) l = Just (shiftNum (getPred l) (negate i))
+triplePart (ObjectMinus i) l    = Just (shiftNum (getObj l) (negate i))
+triplePart _ _ = Nothing
+
+--A triple expression that names nothing falls back to the whole line, which
+--is never an integer, so it satisfies no comparison
 getTripleVal :: Expr -> String -> String
-getTripleVal (Subject) x = getSubj x
-getTripleVal (Predicate) x = getPred x
-getTripleVal (Object) x = getObj x
-getTripleVal (SubjectPlus i1) x | isNumeric $ cleanNumeric $ getSubj x = show $ (read $ cleanNumeric $ getSubj x) + i1
-                                | otherwise = "a"
-getTripleVal (PredicatePlus i1) x | isNumeric $ cleanNumeric $ getPred x = show $ (read $ cleanNumeric $ getPred x) + i1
-                                  | otherwise = "a"
-getTripleVal (ObjectPlus i1) x | isNumeric $ cleanNumeric $ getObj x = show $ (read $ cleanNumeric $ getObj x) + i1
-                                  | otherwise = "a"
-getTripleVal (SubjectMinus i1) x | isNumeric $ cleanNumeric $ getSubj x = show $ (read $ cleanNumeric $ getSubj x) - i1
-                                | otherwise = "a"
-getTripleVal (PredicateMinus i1) x | isNumeric $ cleanNumeric $ getPred x = show $ (read $ cleanNumeric $ getPred x) - i1
-                                  | otherwise = "a"
-getTripleVal (ObjectMinus i1) x | isNumeric $ cleanNumeric $ getObj x = show $ (read $ cleanNumeric $ getObj x) - i1
-                                  | otherwise = "a"
+getTripleVal e l = fromMaybe l (triplePart e l)
 
 cleanNumeric :: String -> String
 cleanNumeric ('+':xs) = xs
@@ -346,10 +343,12 @@ eval1 (Import (Var var1) (Var var2), env, k) = readTTL (var1++".ttl") >>= \conte
 
 
 --Into
-eval1 x@(Into (Var var) e2, env, k) = return $ eval1' x
+eval1 (Into (Var var) e2, env, k) = return (e2, env', IntoFrame var:k)
+                                  where env' | isJust (lookup var env) = env
+                                             | otherwise = update env var (FileLines [])
  
-eval1 (Get list1 list2, env, IntoFrame empVar:k) = return (AssignInt 0, env', k)
-                                where env' = getPosTurtles (Var empVar) list1 list2 env
+eval1 (Get format wheres, env, IntoFrame out:k) =
+  return (AssignInt 0, getPosTurtles out format wheres env, k)
 
 --IFTHENELSE
 
@@ -360,11 +359,14 @@ eval1 (IfThenElse list1 trueBlock falseBlock, env, k) =
   where conds = maskConds env $ evalCond' list1 env
 --Write
 
-eval1 x@(WriteTrue list2, env, IntoFrame _:k) = return $ eval1' x
+eval1 (WriteTrue wheres, env, IntoFrame out:k) =
+  return (AssignInt 0, writeContent OnTrue out wheres env, k)
 
-eval1 x@(WriteFalse list2, env, IntoFrame _:k) = return $ eval1' x
+eval1 (WriteFalse wheres, env, IntoFrame out:k) =
+  return (AssignInt 0, writeContent OnFalse out wheres env, k)
 
-eval1 x@(Write list2, env, IntoFrame _:k) = return $ eval1' x
+eval1 (Write wheres, env, IntoFrame out:k) =
+  return (AssignInt 0, writeContent Always out wheres env, k)
 
 --Export
 eval1 (Export (Var var) , env, k) = do writeFile (var ++ ".ttl") (content ++ "\n")
@@ -372,34 +374,25 @@ eval1 (Export (Var var) , env, k) = do writeFile (var ++ ".ttl") (content ++ "\n
                                     where content = exportContent var env
 
 
-eval1 x@(NothingG, env, k) = return $ eval1' x 
+eval1 (NothingG, env, k) = return (AssignInt 0, env, k)
 
-eval1' :: State -> State
+--Forms the grammar allows but that only mean something inside an INTO block
+eval1 (Get _ _, _, _)      = error "GET needs an enclosing INTO"
+eval1 (Write _, _, _)      = error "WRITE needs an enclosing INTO"
+eval1 (WriteTrue _, _, _)  = error "WRITETRUE needs an enclosing INTO"
+eval1 (WriteFalse _, _, _) = error "WRITEFALSE needs an enclosing INTO"
+eval1 (x, _, IntoFrame out:_)
+  | isValue x = error $ "INTO " ++ out ++ " has no GET or WRITE block"
+eval1 (e, _, _) = error $ "Cannot evaluate : " ++ show e
 
-eval1' (Into (Var var) e2, env, k) = (e2, env', IntoFrame var:k)
-                                   where env' | isJust (lookup var env) = env
-                                              | otherwise = update env var $ FileLines []
-
-eval1' (WriteTrue list2, env, IntoFrame empVar:k) = (AssignInt 0, env', k)
-                                      where env' = writeContent "True" empVar list2 env
-
-eval1' (WriteFalse list2, env, IntoFrame empVar:k) = (AssignInt 0, env', k)
-                                      where env' = writeContent "False" empVar list2 env
-
-eval1' (Write list2, env, IntoFrame empVar:k) = (AssignInt 0, env', k)
-                                      where env' = writeContent "BASE" empVar list2 env
-
-eval1' (NothingG, env, k) = (AssignInt 0, env, k)
-eval1' x = x
-
-getPosTurtles :: Expr -> [Expr] -> [(Expr, [Expr])] -> Environment -> Environment
-getPosTurtles empVar format [] env = env
-getPosTurtles (Var empVar) format (((Var var), list1):vars) env = getPosTurtles (Var empVar) format vars env'
-                                              where (FileLines content) = getValue var env
-                                                    zipped = zip format list1
-                                                    (FileLines writeLines) = getLines zipped env (FileLines content)
-                                                    (FileLines lastContent) = getValue empVar env
-                                                    env' = update env empVar $ (FileLines $ lastContent ++ writeLines)
+--Collect what each WHERE clause selects into the INTO target
+getPosTurtles :: String -> [Expr] -> [(Expr, [Expr])] -> Environment -> Environment
+getPosTurtles _ _ [] env = env
+getPosTurtles out format ((Var var, filters):rest) env = getPosTurtles out format rest env'
+                              where (FileLines content) = getValue var env
+                                    (FileLines selected) = getLines (zip format filters) env (FileLines content)
+                                    (FileLines existing) = getValue out env
+                                    env' = update env out (FileLines (existing ++ selected))
 
 
 --Apply the filters to the content of a ttl file to get what we want
@@ -408,100 +401,42 @@ getLines :: [(Expr, Expr)] -> Environment -> Expr -> Expr
 getLines [] _ (FileLines content) = FileLines content
 getLines (x:xs) env (FileLines content) = getLines xs env $ getLines' x env (FileLines content)
 
+--Which word of a line a triple position names
+type Position = String -> String
+
+position :: Expr -> Maybe Position
+position Subject   = Just getSubj
+position Predicate = Just getPred
+position Object    = Just getObj
+position _         = Nothing
+
+--The position and variable an IN filter refers to
+inPosition :: Expr -> Maybe (Position, String)
+inPosition (SubjectIn (Var v))   = Just (getSubj, v)
+inPosition (PredicateIn (Var v)) = Just (getPred, v)
+inPosition (ObjectIn (Var v))    = Just (getObj, v)
+inPosition _                     = Nothing
+
+--Apply one format/filter pair. A filter naming a position keeps the lines
+--whose format position also appears in that position - somewhere in the same
+--file, or in the file bound to a variable for the IN forms. A literal filter
+--matches the format position exactly. Anything else leaves the lines alone.
 getLines' :: (Expr, Expr) -> Environment -> Expr -> Expr
---Base Cases
-getLines' (Subject, Subject) _ (FileLines content) = FileLines content
-getLines' (Predicate, Predicate) _ (FileLines content) = FileLines content
-getLines' (Object, Object) _ (FileLines content) = FileLines content
-
---Subjects
-getLines' (Subject, Predicate) _ (FileLines content) = FileLines content'
-                                       where preds = [getPred a | a <- content]
-                                             content' = [a | a <- content, (getSubj a) `elem` preds]
-
-getLines' (Subject, Object) _ (FileLines content) = FileLines content'
-                                       where preds = [getObj a | a <- content]
-                                             content' = [a | a <- content, (getSubj a) `elem` preds]
-
-getLines' (Subject, SubjectIn (Var var)) env (FileLines content) = FileLines content'
-                                       where (FileLines vals) = getValue var env
-                                             preds = [getSubj a | a <- vals]
-                                             content' = [a | a <- content, (getSubj a) `elem` preds]
-
-getLines' (Subject, PredicateIn (Var var)) env (FileLines content) = FileLines content'
-                                       where (FileLines vals) = getValue var env
-                                             preds = [getPred a | a <- vals]
-                                             content' = [a | a <- content, (getSubj a) `elem` preds]
-
-getLines' (Subject, ObjectIn (Var var)) env (FileLines content) = FileLines content'
-                                       where (FileLines vals) = getValue var env
-                                             preds = [getObj a | a <- vals]
-                                             content' = [a | a <- content, (getSubj a) `elem` preds]
-
---Predicates
-getLines' (Predicate, Subject) _ (FileLines content) = FileLines content'
-                                       where preds = [getSubj a | a <- content]
-                                             content' = [a | a <- content, (getPred a) `elem` preds]
-
-getLines' (Predicate, Object) _ (FileLines content) = FileLines content'
-                                       where preds = [getObj a | a <- content]
-                                             content' = [a | a <- content, (getPred a) `elem` preds]
-
-getLines' (Predicate, SubjectIn (Var var)) env (FileLines content) = FileLines content'
-                                       where (FileLines vals) = getValue var env
-                                             preds = [getSubj a | a <- vals]
-                                             content' = [a | a <- content, (getPred a) `elem` preds]
-
-getLines' (Predicate, PredicateIn (Var var)) env (FileLines content) = FileLines content'
-                                       where (FileLines vals) = getValue var env
-                                             preds = [getPred a | a <- vals]
-                                             content' = [a | a <- content, (getPred a) `elem` preds]
-
-getLines' (Predicate, ObjectIn (Var var)) env (FileLines content) = FileLines content'
-                                       where (FileLines vals) = getValue var env
-                                             preds = [getObj a | a <- vals]
-                                             content' = [a | a <- content, (getPred a) `elem` preds]
-
---Objects
-getLines' (Object, Predicate) _ (FileLines content) = FileLines content'
-                                       where preds = [getPred a | a <- content]
-                                             content' = [a | a <- content, (getObj a) `elem` preds]
-
-getLines' (Object, Subject) _ (FileLines content) = FileLines content'
-                                       where preds = [getSubj a | a <- content]
-                                             content' = [a | a <- content, (getObj a) `elem` preds]
-
-getLines' (Object, SubjectIn (Var var)) env (FileLines content) = FileLines content'
-                                       where (FileLines vals) = getValue var env
-                                             preds = [getSubj a | a <- vals]
-                                             content' = [a | a <- content, (getObj a) `elem` preds]
-
-getLines' (Object, PredicateIn (Var var)) env (FileLines content) = FileLines content'
-                                       where (FileLines vals) = getValue var env
-                                             preds = [getPred a | a <- vals]
-                                             content' = [a | a <- content, (getObj a) `elem` preds]
-
-getLines' (Object, ObjectIn (Var var)) env (FileLines content) = FileLines content'
-                                       where (FileLines vals) = getValue var env
-                                             preds = [getObj a | a <- vals]
-                                             content' = [a | a <- content, (getObj a) `elem` preds]
-
---Variables
-getLines' (Subject, (Var var)) _ (FileLines content) = FileLines [a | a <- content, (getSubj a) == var]
-getLines' (Predicate, (Var var)) _ (FileLines content) = FileLines [a | a <- content, (getPred a) == var]
-getLines' (Object, (Var var)) _ (FileLines content) = FileLines [a | a <- content, (getObj a) == var]
-
-
---True
-getLines' (Subject, TrueElem) _ (FileLines content) = FileLines [a | a <- content, (getSubj a) == "true"]
-getLines' (Predicate, TrueElem) _ (FileLines content) = FileLines [a | a <- content, (getPred a) == "true"]
-getLines' (Object, TrueElem) _ (FileLines content) = FileLines [a | a <- content, (getObj a) == "true"]
-
---False
-getLines' (Subject, FalseElem) _ (FileLines content) = FileLines [a | a <- content, (getSubj a) == "false"]
-getLines' (Predicate, FalseElem) _ (FileLines content) = FileLines [a | a <- content, (getPred a) == "false"]
-getLines' (Object, FalseElem) _ (FileLines content) = FileLines [a | a <- content, (getObj a) == "false"]
-
+getLines' (fmt, filt) env whole@(FileLines content)
+  | fmt == filt = whole
+  | otherwise   = maybe whole select (position fmt)
+  where select at | Just from <- position filt        = occursIn at (map from content)
+                  | Just (from, v) <- inPosition filt = occursIn at (map from (linesOf v))
+                  | Var v <- filt                     = equals at v
+                  | AssignInt n <- filt                = equalsNum at n
+                  | TrueElem <- filt                  = equals at "true"
+                  | FalseElem <- filt                 = equals at "false"
+                  | otherwise                         = whole
+        occursIn at vals = FileLines [l | l <- content, at l `Set.member` valSet]
+          where valSet = Set.fromList vals
+        equals at v      = FileLines [l | l <- content, at l == v]
+        equalsNum at n   = FileLines [l | l <- content, cleanNumeric (at l) == show n]
+        linesOf v = ls where (FileLines ls) = getValue v env
 getLines' _ _ x = x
 
 --Get subject from a line of triple
@@ -522,7 +457,7 @@ getObj :: String -> String
 getObj line = removeTBrac $ head $ tail $ reverse $ words line  
 
 addObjBrac :: String -> String
-addObjBrac x | isSubsequenceOf "http://" x = addTBrac x
+addObjBrac x | isInfixOf "http://" x = addTBrac x
              | otherwise = x
 
 cleanUp :: String -> String
@@ -531,11 +466,18 @@ cleanUp x = (addTBrac $ getSubj x) ++ " " ++ (addTBrac $ getPred x) ++ " " ++ (a
 removeInEnv :: Environment -> String -> Environment
 removeInEnv env var = [a | a <- env, fst a /= var]
 
+--Remove duplicates keeping the first occurrence - nub, without the quadratic
+nubOrd :: [String] -> [String]
+nubOrd = go Set.empty
+       where go _ [] = []
+             go seen (x:xs) | Set.member x seen = go seen xs
+                            | otherwise = x : go (Set.insert x seen) xs
+
 cleanSort :: [String] -> [String]
-cleanSort x = nub $ map cleanUp $ sortBySP x
+cleanSort x = nubOrd $ map cleanUp $ sortBySP x
 
 sortBySP :: [String] -> [String]
-sortBySP x = sortBy (\a b -> compare a b) x
+sortBySP = sort
 
 getSP :: String -> String
 getSP x = (getSubj x) ++ " " ++ (getPred x)
