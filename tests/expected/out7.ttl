@@ -1,0 +1,3 @@
+<http://example.org/data/alice> <http://xmlns.com/foaf/name> 1 .
+<http://example.org/data/bob> <http://xmlns.com/foaf/score> 10 .
+<http://example.org/data/bob> <http://xmlns.com/foaf/score> 20 .

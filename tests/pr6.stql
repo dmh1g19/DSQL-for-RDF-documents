@@ -1,0 +1,5 @@
+IMPORT baz AS Z;
+
+INTO out6 GET [subj,pred,obj] WHERE {Z[subj,pred,obj]};
+
+EXPORT out6;

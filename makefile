@@ -1,0 +1,41 @@
+# Build:  make
+# Test:   make test    (runs tests/prN.stql, diffs the outN.ttl it writes
+#                       against tests/expected/outN.ttl)
+# Report: make report  (regenerates rdf.pdf from README.md)
+# Clean:  make clean
+
+GHC   = ghc
+ALEX  = alex
+HAPPY = happy
+
+TESTS = 1 2 3 4 5 6 7 8 9
+
+stql: Tokens.hs Grammar.hs Eval.hs Stql.hs
+	$(GHC) -o stql Stql.hs
+
+Tokens.hs: Tokens.x
+	$(ALEX) $< -o $@
+
+Grammar.hs: Grammar.y
+	$(HAPPY) $< -o $@
+
+test: stql
+	@rm -rf .testrun; mkdir -p .testrun; cp tests/*.ttl tests/*.stql .testrun/; \
+	fail=0; \
+	for i in $(TESTS); do \
+	  ( cd .testrun && ../stql pr$$i.stql >/dev/null ) || { echo "pr$$i ERROR"; fail=1; continue; }; \
+	  if diff -q .testrun/out$$i.ttl tests/expected/out$$i.ttl >/dev/null 2>&1; then \
+	    echo "pr$$i ok"; \
+	  else \
+	    echo "pr$$i FAILED"; fail=1; \
+	  fi; \
+	done; \
+	rm -rf .testrun; exit $$fail
+
+report: README.md mkreport.py
+	python3 mkreport.py
+
+clean:
+	rm -f stql *.o *.hi Grammar.info; rm -rf .testrun
+
+.PHONY: test clean report

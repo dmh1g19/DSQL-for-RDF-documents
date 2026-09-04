@@ -1,0 +1,9 @@
+@base <http://www.cw.org/> .
+
+@prefix foaf: <http://xmlns.com/foaf/> .
+
+@prefix ex: <http://example.org/data/> .
+
+ex:alice foaf:name 1 ; foaf:age 30 .
+ex:bob foaf:score 10 , 20 , 30 .
+<plain> foaf:name 2 .

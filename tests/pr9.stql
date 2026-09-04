@@ -1,0 +1,7 @@
+IMPORT baz AS Z;
+
+IF {Z[NOT obj > 10 AND obj != 1]} THEN
+INTO out9 WRITETRUE {Z[subj,pred,obj]}
+ELSE NOTHING;
+
+EXPORT out9;

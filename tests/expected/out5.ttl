@@ -1,0 +1,7 @@
+<http://www.cw.org/testSubA> <http://www.cw.org/hasPosInt> 51 .
+<http://www.cw.org/testSubA> <http://www.cw.org/problem5/#inRange> false .
+<http://www.cw.org/testSubA> <http://www.cw.org/problem5/#inRange> true .
+<http://www.cw.org/testSubA> <http://www.cw.org/testObjList> 11 .
+<http://www.cw.org/testSubA> <http://www.cw.org/testObjList> 21 .
+<http://www.cw.org/testSubA> <http://www.cw.org/testPredList> 11 .
+<http://www.cw.org/testSubA> <http://www.cw.org/testPredList> 21 .

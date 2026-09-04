@@ -1,0 +1,9 @@
+# build products
+stql
+*.o
+*.hi
+Grammar.info
+
+# macOS
+.DS_Store
+.testrun/

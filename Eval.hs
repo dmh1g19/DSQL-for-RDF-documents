@@ -12,7 +12,7 @@ import Data.Maybe
 readTTL :: FilePath -> IO [String]
 readTTL file = readFile file >>= \content -> return (lines content)
 
-data Frame = AsFrame String | IntoFrame
+data Frame = AsFrame String | IntoFrame String
       deriving (Show, Eq)
 
 type Environment = [(String, Expr)]
@@ -25,14 +25,17 @@ type State = (Expr, Environment, Kontinuation)
 eval :: ([Expr], Environment, Kontinuation) -> IO ([Expr], Environment)
 eval ([], env, _) = return ([], env)
 eval (x:xs, env, k) = do (x', env', k') <- eval1 (x, env, k)
-                         if (x' == x) && (isValue x') && (null k) then do
-                         eval (xs, env', k')
-                         else do eval (x':xs, env', k')
+                         if (x' == x) && (isValue x') && (null k)
+                           then eval (xs, env', k')
+                           else eval (x':xs, env', k')
 
-evalLoop' :: (Expr, Environment, Kontinuation) -> (Expr, Environment, Kontinuation)
-evalLoop' (x, env, k) | (x' == x) && (isValue x') && (null k) = (x', env', k')
-                      | otherwise = eval1' (x', env', k')
-                      where (x', env', k') = eval1' (x, env, k)
+--Run one block (an IF branch) to a value, handing the environment and
+--continuation back to the caller
+evalBlock :: State -> IO (Environment, Kontinuation)
+evalBlock (x, env, k) = do (x', env', k') <- eval1 (x, env, k)
+                           if (x' == x) && (isValue x') && (null k')
+                             then return (env', k')
+                             else evalBlock (x', env', k')
 
 --Check if a string is numeric
 isInteger s = case reads s :: [(Integer, String)] of
@@ -78,8 +81,13 @@ sepPOs (x:xs) = ([x] ++ x', xs')
 
 predListToTriple :: String -> [String]
 predListToTriple x = [sub ++ " " ++ predObj ++ " ." | predObj <- predObjs]
-                   where sub = addTBrac $ getSubj x
-                         predObjs = sepPredObjs $ (x \\ sub)
+                   where (sub, rest) = splitWord x
+                         predObjs = sepPredObjs rest
+
+--Split the leading word off a line, keeping it exactly as written
+splitWord :: String -> (String, String)
+splitWord x = (w, dropWhile (== ' ') rest)
+            where (w, rest) = break (== ' ') (dropWhile (== ' ') x)
 
 isPredicateList :: String -> Bool
 isPredicateList x = ';' `elem` x
@@ -98,9 +106,11 @@ sepOs (x:xs) = ([x] ++ x', xs')
              where (x', xs') = sepOs xs
 
 objListToTriple :: String -> [String]
-objListToTriple x = [sub ++ " " ++ obj ++ " ." | obj <- objs]
-                   where sub = (addTBrac $ getSubj x) ++ " " ++ (addTBrac $ getPred x) ++ " "
-                         objs = sepObjs $ (x \\ sub)
+objListToTriple x = [subPred ++ " " ++ obj ++ " ." | obj <- objs]
+                   where (sub, rest) = splitWord x
+                         (prd, rest') = splitWord rest
+                         subPred = sub ++ " " ++ prd
+                         objs = sepObjs rest'
 
 isObjectList :: String -> Bool
 isObjectList x = ',' `elem` x
@@ -112,8 +122,11 @@ removeDot ('.':' ':xs) = reverse xs
 removeDot x = reverse x
 
 getPrefix :: String -> (String, String)
-getPrefix ('@':'b':'a':'s':'e':' ':xs) = ("BASE", xs') where xs' = removeDot $ reverse xs
-getPrefix ('@':'p':'r':'e':'f':'i':'x':' ':x:':':' ':xs) = ([x], xs') where xs' = removeDot $ reverse xs
+getPrefix ('@':'b':'a':'s':'e':' ':xs) = ("BASE", removeDot $ reverse xs)
+getPrefix ('@':'p':'r':'e':'f':'i':'x':' ':xs) = (name, removeDot $ reverse val)
+                                               where (name, rest) = break (== ':') xs
+                                                     val = dropWhile (== ' ') $ drop 1 rest
+getPrefix x = error $ "Unrecognised directive : " ++ x
 
 --Absolute triple
 absTriples :: [(String, String)] -> String -> String
@@ -121,6 +134,7 @@ absTriples pMap x = intercalate " " applied
                   where applied = map (applyAbs pMap) $ words x
 
 getVals :: String -> [(String, String)] -> String
+getVals val [] = error $ "Not Found : No prefix declared for " ++ val
 getVals val ((x,y):vals) | val == x = y
                          | otherwise = getVals val vals
 
@@ -170,26 +184,18 @@ replaceT (x:xs) = [x] ++ (replaceT xs)
 --Writing to File
 writeContent :: String -> String -> [(Expr, [Expr])] -> Environment -> Environment
 writeContent _ _ [] env = env
-writeContent "True" empVar ((Var var, list1):xs) env = writeContent "True" empVar xs env'
+writeContent mode empVar ((Var var, list1):xs) env = writeContent mode empVar xs env'
                                               where (StoreLines ifVar) = getValue ("IF-"++var) env
-                                                    env' = do (b, s) <- ifVar
-                                                              case b of
-                                                                True -> writeUp empVar s list1 env
-                                                                other -> env
-writeContent "False" empVar ((Var var, list1):xs) env = writeContent "False" empVar xs env'
-                                              where (StoreLines ifVar) = getValue ("IF-"++var) env
-                                                    env' = do (b, s) <- ifVar
-                                                              case b of
-                                                                False -> writeUp empVar s list1 env
-                                                                other -> env
-writeContent "BASE" empVar ((Var var, list1):xs) env = writeContent "BASE" empVar xs env'
-                                              where (StoreLines ifVar) = getValue ("IF-"++var) env
-                                                    env' = do (b, s) <- ifVar
-                                                              case b of
-                                                                other -> writeUp empVar s list1 env
+                                                    env' = foldl writeLine env ifVar
+                                                    writeLine e (b, s) | keep b = writeUp empVar s list1 e
+                                                                       | otherwise = e
+                                                    keep b | mode == "True" = b
+                                                           | mode == "False" = not b
+                                                           | otherwise = True
 
 writeUp :: String -> String -> [Expr] -> Environment -> Environment
-writeUp empVar s [] env = update env empVar (FileLines [s])
+writeUp empVar s [] env = update env empVar (FileLines $ lastContent ++ [s])
+                        where (FileLines lastContent) = getValue empVar env
 writeUp empVar s expr env = update env empVar (FileLines $ lastContent ++ [newContent])
                           where (FileLines lastContent) = getValue empVar env
                                 newContent = formWords s expr
@@ -208,13 +214,45 @@ getWord _ (Var var) | isSubsequenceOf "http://" var = addTBrac var
                     | otherwise = var
 getWord _ (TrueElem) = "true"
 getWord _ (FalseElem) = "false"
+getWord s (SubjectPlus i) = shiftNum (getSubj s) i
+getWord s (PredicatePlus i) = shiftNum (getPred s) i
+getWord s (ObjectPlus i) = shiftNum (getObj s) i
+getWord s (SubjectMinus i) = shiftNum (getSubj s) (negate i)
+getWord s (PredicateMinus i) = shiftNum (getPred s) (negate i)
+getWord s (ObjectMinus i) = shiftNum (getObj s) (negate i)
 getWord s _ = s
+
+--Shift a numeric triple position by n; a non-numeric value is left as it is
+shiftNum :: String -> Int -> String
+shiftNum v n | isInteger val = show (read val + n)
+             | otherwise = v
+             where val = cleanNumeric v
 --Evaluating IF Statemtnets
 
-evalCond :: Expr -> Environment -> Environment
-evalCond conds env = env'
-                   where evaluatedConds = evalCond' conds env
-                         env' = updateEC evaluatedConds env  
+--Lines a branch may still see; with no enclosing ELSE every line is eligible
+lineMask :: String -> Environment -> [Bool]
+lineMask var env = case lookup ("ELSE-" ++ var) env of
+                     Just (StoreLines ms) -> map fst ms
+                     _                    -> repeat True
+
+--Restrict freshly evaluated flags to the lines this branch may still see
+maskConds :: Environment -> [(String, [(Bool, String)])] -> [(String, [(Bool, String)])]
+maskConds env conds = [(v, zipWith keep (lineMask v env) fs) | (v, fs) <- conds]
+                    where keep m (b, l) = (m && b, l)
+
+--An ELSE branch sees exactly the lines its IF condition did not match
+elseMask :: [(String, [(Bool, String)])] -> Environment -> Environment
+elseMask conds env = foldl add env conds
+                   where add e (v, fs) = update e ("ELSE-" ++ v) $ StoreLines
+                                           (zipWith rest (lineMask v e) fs)
+                         rest m (b, l) = (m && not b, l)
+
+--Put the enclosing mask back, so later statements are unaffected
+dropMask :: [(String, [(Bool, String)])] -> Environment -> Environment -> Environment
+dropMask conds outer env = foldl put env conds
+                         where put e (v, fs) = update e ("ELSE-" ++ v) $
+                                 fromMaybe (StoreLines [(True, l) | (_, l) <- fs])
+                                           (lookup ("ELSE-" ++ v) outer)
 
 updateEC :: [(String, [(Bool, String)])] -> Environment -> Environment
 updateEC [] env = env
@@ -225,11 +263,22 @@ evalCond' :: Expr -> Environment -> [(String, [(Bool, String)])]
 evalCond' (Base (Var var) innerCond) env = [(var, allVals)]
                                          where (FileLines varVals) = getValue var env
                                                allVals = map (\a -> (applyCond innerCond a, a)) varVals
+evalCond' (OrCond v c rest) env = mergeConds (||) (evalCond' (Base v c) env) (evalCond' rest env)
+evalCond' (AndCond v c rest) env = mergeConds (&&) (evalCond' (Base v c) env) (evalCond' rest env)
+
+--Flags for the same variable combine pointwise; different variables are kept apart
+mergeConds :: (Bool -> Bool -> Bool) -> [(String, [(Bool, String)])]
+              -> [(String, [(Bool, String)])] -> [(String, [(Bool, String)])]
+mergeConds op as bs = [(v, combine v fs) | (v, fs) <- as]
+                      ++ [b | b@(v, _) <- bs, isNothing (lookup v as)]
+                    where combine v fs = maybe fs (zipWith join fs) (lookup v bs)
+                          join (b1, l) (b2, _) = (op b1 b2, l)
 
 applyCond :: Expr -> String -> Bool
 --InnerBase
 applyCond (InnerBase (TrueElem)) _ = True
 applyCond (InnerBase (FalseElem)) _ = False
+applyCond (InnerBase (NotCond c)) x = not $ applyCond (InnerBase c) x
 applyCond (InnerBase y) x = applyTriple y x
 
 --InnerOr
@@ -239,16 +288,24 @@ applyCond (InnerOr c1 c2) x = (applyCond c1 x) || (applyCond c2 x)
 applyCond (InnerAnd c1 c2) x = (applyCond c1 x) && (applyCond c2 x)
 
 --Triple Application
-applyTriple (LTCond trip intVal) x = (<) (getTripleVal trip x) (show intVal)
-applyTriple (GTCond trip intVal) x = (>) (getTripleVal trip x) (show intVal)
-applyTriple (LTECond trip intVal) x = (<=) (getTripleVal trip x) (show intVal)
-applyTriple (GTECond trip intVal) x = (>=) (getTripleVal trip x) (show intVal)
-applyTriple (ECond trip intVal) x = (==) (getTripleVal trip x) (show intVal)
+applyTriple (LTCond trip intVal) x = cmpNum (<) trip intVal x
+applyTriple (GTCond trip intVal) x = cmpNum (>) trip intVal x
+applyTriple (LTECond trip intVal) x = cmpNum (<=) trip intVal x
+applyTriple (GTECond trip intVal) x = cmpNum (>=) trip intVal x
+applyTriple (ECond trip intVal) x = cmpNum (==) trip intVal x
+applyTriple (NECond trip intVal) x = not $ cmpNum (==) trip intVal x
 
 applyTriple (LessThan x1 x2) _ = (<) x1 x2
 applyTriple (MoreThan x1 x2) _ = (>) x1 x2
 applyTriple (LessThanEqual x1 x2) _ = (<=) x1 x2
 applyTriple (MoreThanEqual x1 x2) _ = (>=) x1 x2
+
+--Compare a triple position against an integer literal numerically.
+--A non-integer value satisfies no comparison.
+cmpNum :: (Integer -> Integer -> Bool) -> Expr -> Int -> String -> Bool
+cmpNum op trip intVal x | isInteger val = op (read val) (toInteger intVal)
+                        | otherwise = False
+                        where val = cleanNumeric $ getTripleVal trip x
 
 getTripleVal :: Expr -> String -> String
 getTripleVal (Subject) x = getSubj x
@@ -291,45 +348,46 @@ eval1 (Import (Var var1) (Var var2), env, k) = readTTL (var1++".ttl") >>= \conte
 --Into
 eval1 x@(Into (Var var) e2, env, k) = return $ eval1' x
  
-eval1 (Get list1 list2, env, IntoFrame:k) = return (AssignInt 0, env', k)
-                                where empVar = getEmptyVar env
-                                      env' = getPosTurtles (Var empVar) list1 list2 env
+eval1 (Get list1 list2, env, IntoFrame empVar:k) = return (AssignInt 0, env', k)
+                                where env' = getPosTurtles (Var empVar) list1 list2 env
 
 --IFTHENELSE
 
-eval1 (IfThenElse list1 trueBlock falseBlock, env, k) = return (AssignInt 0, falseEnv, falseK)
-                                                      where env' = evalCond list1 env
-                                                            (_,trueEnv,trueK) = evalLoop' (trueBlock, env', k)
-                                                            (_,falseEnv,falseK) = evalLoop' (falseBlock, trueEnv, trueK)
+eval1 (IfThenElse list1 trueBlock falseBlock, env, k) =
+  do (trueEnv, trueK) <- evalBlock (trueBlock, updateEC conds env, k)
+     (falseEnv, falseK) <- evalBlock (falseBlock, elseMask conds trueEnv, trueK)
+     return (AssignInt 0, dropMask conds env falseEnv, falseK)
+  where conds = maskConds env $ evalCond' list1 env
 --Write
 
-eval1 x@(WriteTrue list2, env, IntoFrame:k) = return $ eval1' x
+eval1 x@(WriteTrue list2, env, IntoFrame _:k) = return $ eval1' x
 
-eval1 x@(WriteFalse list2, env, IntoFrame:k) = return $ eval1' x
+eval1 x@(WriteFalse list2, env, IntoFrame _:k) = return $ eval1' x
 
-eval1 x@(Write list2, env, IntoFrame:k) = return $ eval1' x
+eval1 x@(Write list2, env, IntoFrame _:k) = return $ eval1' x
 
 --Export
-eval1 (Export (Var var) , env, k) = return (AssignInt 0, update env var (FileLines $ [exportContent var env]), k)
+eval1 (Export (Var var) , env, k) = do writeFile (var ++ ".ttl") (content ++ "\n")
+                                       return (AssignInt 0, update env var (FileLines [content]), k)
+                                    where content = exportContent var env
 
 
 eval1 x@(NothingG, env, k) = return $ eval1' x 
 
 eval1' :: State -> State
 
-eval1' (Into (Var var) e2, env, k) = (e2, update env var $ FileLines [], IntoFrame:k)
+eval1' (Into (Var var) e2, env, k) = (e2, env', IntoFrame var:k)
+                                   where env' | isJust (lookup var env) = env
+                                              | otherwise = update env var $ FileLines []
 
-eval1' (WriteTrue list2, env, IntoFrame:k) = (AssignInt 0, env', k)
-                                      where empVar = getEmptyVar env
-                                            env' = writeContent "True" empVar list2 env
+eval1' (WriteTrue list2, env, IntoFrame empVar:k) = (AssignInt 0, env', k)
+                                      where env' = writeContent "True" empVar list2 env
 
-eval1' (WriteFalse list2, env, IntoFrame:k) = (AssignInt 0, env', k)
-                                      where empVar = getEmptyVar env
-                                            env' = writeContent "False" empVar list2 env
+eval1' (WriteFalse list2, env, IntoFrame empVar:k) = (AssignInt 0, env', k)
+                                      where env' = writeContent "False" empVar list2 env
 
-eval1' (Write list2, env, IntoFrame:k) = (AssignInt 0, env', k)
-                                      where empVar = getEmptyVar env
-                                            env' = writeContent "BASE" empVar list2 env
+eval1' (Write list2, env, IntoFrame empVar:k) = (AssignInt 0, env', k)
+                                      where env' = writeContent "BASE" empVar list2 env
 
 eval1' (NothingG, env, k) = (AssignInt 0, env, k)
 eval1' x = x
@@ -472,10 +530,6 @@ cleanUp x = (addTBrac $ getSubj x) ++ " " ++ (addTBrac $ getPred x) ++ " " ++ (a
 
 removeInEnv :: Environment -> String -> Environment
 removeInEnv env var = [a | a <- env, fst a /= var]
-
-getEmptyVar :: Environment -> String
-getEmptyVar ((x,y):env) | y == FileLines [] = x
-                        | otherwise = getEmptyVar env
 
 cleanSort :: [String] -> [String]
 cleanSort x = nub $ map cleanUp $ sortBySP x
