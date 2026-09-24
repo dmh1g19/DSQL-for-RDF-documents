@@ -1,0 +1,4 @@
+-- importing a turtle file that does not exist
+IMPORT nosuchfile AS A;
+INTO o GET [subj,pred,obj] WHERE {A[subj,pred,obj]};
+EXPORT o;

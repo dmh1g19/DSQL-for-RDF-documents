@@ -1,0 +1,6 @@
+<http://example.org/data/alice> <http://xmlns.com/foaf/age> 30 .
+<http://example.org/data/alice> <http://xmlns.com/foaf/name> 1 .
+<http://example.org/data/bob> <http://xmlns.com/foaf/score> 10 .
+<http://example.org/data/bob> <http://xmlns.com/foaf/score> 20 .
+<http://example.org/data/bob> <http://xmlns.com/foaf/score> 30 .
+<http://www.cw.org/plain> <http://xmlns.com/foaf/name> 2 .

@@ -1,0 +1,20 @@
+name:                stql-web
+version:             0.1.0.0
+synopsis:            STQL in the browser
+category:            Web
+build-type:          Simple
+cabal-version:       >=1.10
+
+-- The interpreter (Tokens, Grammar, Eval) is shared with the command-line
+-- build in the top directory; the Miso front-end lives in web/.
+executable stql-web
+  main-is:             Main.hs
+  ghcjs-options:
+    -dedupe
+  hs-source-dirs:      web, .
+  build-depends:       base, miso, aeson, array, containers, deepseq, ghcjs-base
+  build-tools:         happy, alex
+  other-modules:       Tokens, Grammar, Eval, InMemory,
+                       Examples, Graph, Results, Highlight, Types, Update,
+                       Styles, Decoders, Viewport, GraphView, View, Format
+  default-language:    Haskell2010

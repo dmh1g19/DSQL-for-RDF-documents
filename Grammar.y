@@ -19,6 +19,8 @@ import Tokens
   IN          { InToken _ }
   AS          { AsToken _ }
   GET         { GetToken _ }
+  FROM        { FromToken _ }
+  NOT         { NotToken _ }
   AND         { AndToken _ }
   OR          { OrToken _ }
   IF          { IfToken _ }
@@ -38,20 +40,14 @@ import Tokens
   '<='        { LessThanEqualToken _ }
   '>='        { MoreThanEqualToken _ }
   '='        {EqualsToken _ }
+  '!='        { NotEqualToken _ }
   '+'         { PlusToken _ }
   '-'         { MinusToken _ }
-  '('         { ParenRToken _ }
-  ')'         { ParenLToken _ }
+  '('         { ParenLToken _ }
+  ')'         { ParenRToken _ }
   '['         { BracketLToken _ }
   ']'         { BracketRToken _ }
   ','         { CommaToken _ }
-
--- Operations wiht lowest precedence are listed first
--- Operations with equal precedence are listed on the same line
-
-%left in
-%right '='
-%nonassoc int var '(' ')'
 
 %%
 
@@ -60,19 +56,19 @@ stmts : stmt                                                                { [$
 
 stmt : exp ';'                                                              { $1 }
 
-exp : INTO exp exp                                                          { Into $2 $3 }
+exp : INTO var exp                                                          { Into (Var $2) $3 }
     | var                                                                   { Var $1 }
     | NOTHING                                                               { NothingG }
     | int                                                                   { AssignInt $1 }
     | GET '[' listElement ']' WHERE '{' compareLists '}'                    { Get $3 $7 }
+    | GET '[' listElement ']' FROM var                                      { Get $3 [(Var $6, $3)] }
     | WRITE '{' compareLists '}'                                            { Write $3}
     | WRITETRUE '{' compareLists '}'                                        { WriteTrue $3}
     | WRITEFALSE '{' compareLists '}'                                       { WriteFalse $3} 
     | IN exp                                                                { In $2 }
     | AS exp                                                                { As $2 } 
-    | IMPORT exp AS exp                                                     { Import $2 $4 }
-    | IMPORT exp AS exp '{' var '}'                                         { ImportAs $2 $4 (Var $6)}
-	| EXPORT exp                                                            { Export $2}
+    | IMPORT var AS var                                                     { Import (Var $2) (Var $4) }
+	| EXPORT var                                                            { Export (Var $2)}
     | IF '{' conditions '}' THEN exp ELSE exp                               { IfThenElse $3 $6 $8 }
     | int '<' int                                                           { LessThan $1 $3 }
     | int '>' int                                                           { MoreThan $1 $3 }
@@ -82,20 +78,24 @@ exp : INTO exp exp                                                          { In
     | int '>=' int                                                          { MoreThanEqual $1 $3 }
     | '(' exp ')'                                                           { $2 }
 
+number : int                                                                { $1 }
+       | '-' int                                                            { negate $2 }
+
 listElement : listElementContent                                            { [$1] }
             | listElementContent ',' listElement                            { $1 : $3 }
 
 listElementContent : triple                                                 { $1 }
+                   | '-' int                                                { AssignInt (negate $2) }
                    | true                                                   { TrueElem }
                    | false                                                  { FalseElem }
                    | exp                                                    { $1 }
 
-compareLists : exp '[' listElement ']'                                          { [($1, $3)] }
-             | exp '[' listElement ']' comparison compareLists                  { ($1, $3) : $6 }
+compareLists : var '[' listElement ']'                                          { [(Var $1, $3)] }
+             | var '[' listElement ']' comparison compareLists                  { (Var $1, $3) : $6 }
 
-conditions : exp '[' condition ']'                                          { Base $1 $3 }
-           | exp '[' condition ']' OR conditions                            { OrCond $1 $3 $6}
-           | exp '[' condition ']' AND conditions                            { AndCond $1 $3 $6}
+conditions : var '[' condition ']'                                          { Base (Var $1) $3 }
+           | var '[' condition ']' OR conditions                            { OrCond (Var $1) $3 $6}
+           | var '[' condition ']' AND conditions                            { AndCond (Var $1) $3 $6}
 
 condition : conditionStatement                                              { InnerBase $1}
           | conditionStatement OR condition                                 { InnerOr (InnerBase $1) $3}
@@ -106,25 +106,26 @@ comparison : OR                                                             { Or
 
 conditionStatement : true                                                   { TrueElem}
                    | false                                                  { FalseElem}
-                   | triple '<' int                                         { LTCond $1 $3 }
-                   | triple '>' int                                         { GTCond $1 $3 }
-                   | triple '<=' int                                        { LTECond $1 $3 }
-                   | triple '>=' int                                         { GTECond $1 $3 }
-                   | triple '=' int                                         { ECond $1 $3 }
-                   | exp                                                    { $1 }
+                   | triple '<' number                                         { LTCond $1 $3 }
+                   | triple '>' number                                         { GTCond $1 $3 }
+                   | triple '<=' number                                        { LTECond $1 $3 }
+                   | triple '>=' number                                         { GTECond $1 $3 }
+                   | triple '=' number                                         { ECond $1 $3 }
+                   | triple '!=' number                                        { NECond $1 $3 }
+                   | NOT conditionStatement                                 { NotCond $2 }
 
 triple : subj                                                   { Subject }
        | pred                                                   { Predicate }
        | obj                                                    { Object }
-       | subj IN exp                                            { SubjectIn $3}
-       | pred IN exp                                            { PredicateIn $3 }
-       | obj IN exp                                             { ObjectIn $3}
-       | subj '+' int                                             { SubjectPlus $3}
-       | pred '+' int                                            { PredicatePlus $3}
-       | obj '+' int                                            { ObjectPlus $3}
-       | subj '-' int                                             { SubjectMinus $3}
-       | pred '-' int                                             { PredicateMinus $3}
-       | obj '-' int                                             { ObjectMinus $3}
+       | subj IN var                                            { SubjectIn (Var $3) }
+       | pred IN var                                            { PredicateIn (Var $3) }
+       | obj IN var                                             { ObjectIn (Var $3) }
+       | subj '+' number                                             { SubjectPlus $3}
+       | pred '+' number                                            { PredicatePlus $3}
+       | obj '+' number                                            { ObjectPlus $3}
+       | subj '-' number                                             { SubjectMinus $3}
+       | pred '-' number                                             { PredicateMinus $3}
+       | obj '-' number                                             { ObjectMinus $3}
 {
 parseError :: [Token] -> a
 parseError [] = error "Unknown Parse Error - empty token list." 
@@ -134,7 +135,6 @@ data Expr = Var String
           | AssignInt Int
           | NothingG
           | Import Expr Expr
-          | ImportAs Expr Expr Expr
           | Into Expr Expr
           | Get [Expr] [(Expr, [Expr])]
           | Write [(Expr, [Expr])]
@@ -167,6 +167,8 @@ data Expr = Var String
           | GTCond Expr Int
           | GTECond Expr Int
           | ECond Expr Int
+          | NECond Expr Int
+          | NotCond Expr
           | Base Expr Expr
           | OrCond Expr Expr Expr
           | AndCond Expr Expr Expr

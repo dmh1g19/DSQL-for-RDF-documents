@@ -6,7 +6,7 @@ module Tokens where
 
 $digit = 0-9
 $alpha = [a-zA-Z]
-$special = [\:\_\'\.\$\|\*\?\#\~\{\}\^\/]
+$special = [\:\_\'\.\$\|\*\?\#\~\^\/]
 
 tokens :-
   $white+     ;
@@ -117,6 +117,10 @@ tokenPosn (CurRToken(AlexPn _ l c) ) = (show l) ++ ":" ++ (show c)
 tokenPosn (SemiColonToken (AlexPn _ l c) ) = (show l) ++ ":" ++ (show c)
 tokenPosn (IntoToken (AlexPn _ l c) ) = (show l) ++ ":" ++ (show c)
 tokenPosn (GetToken (AlexPn _ l c) ) = (show l) ++ ":" ++ (show c)
+tokenPosn (AsToken (AlexPn _ l c) ) = (show l) ++ ":" ++ (show c)
+tokenPosn (WhereToken (AlexPn _ l c) ) = (show l) ++ ":" ++ (show c)
+tokenPosn (FromToken (AlexPn _ l c) ) = (show l) ++ ":" ++ (show c)
+tokenPosn (IfToken (AlexPn _ l c) ) = (show l) ++ ":" ++ (show c)
 tokenPosn (ThenToken (AlexPn _ l c) ) = (show l) ++ ":" ++ (show c)
 tokenPosn (ElseToken (AlexPn _ l c) ) = (show l) ++ ":" ++ (show c)
 tokenPosn (TrueToken (AlexPn _ l c) ) = (show l) ++ ":" ++ (show c)

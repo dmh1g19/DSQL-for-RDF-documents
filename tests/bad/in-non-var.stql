@@ -1,0 +1,3 @@
+-- IN must name a variable
+IMPORT foo AS A;
+INTO o GET [subj,pred,obj] WHERE {A[subj,pred,subj IN 5]};

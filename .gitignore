@@ -1,0 +1,16 @@
+# build products
+stql
+*.o
+*.hi
+Grammar.info
+
+# macOS
+.DS_Store
+.testrun/
+
+# browser build
+result
+site/
+dist-newstyle/
+.firebase/
+.firebaserc

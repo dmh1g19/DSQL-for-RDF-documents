@@ -1,0 +1,3 @@
+-- GET only means something inside an INTO block
+IMPORT foo AS A;
+GET [subj,pred,obj] WHERE {A[subj,pred,obj]};

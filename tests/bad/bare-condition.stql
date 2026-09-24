@@ -1,0 +1,3 @@
+-- a condition must compare a triple position, not name a variable
+IMPORT foo AS A;
+IF {A[somevar]} THEN INTO o WRITETRUE {A[subj,pred,obj]} ELSE NOTHING;

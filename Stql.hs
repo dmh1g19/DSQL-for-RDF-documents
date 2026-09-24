@@ -3,29 +3,29 @@ import Grammar
 import Eval
 import System.Environment
 import Control.Exception
+import System.Exit
 import System.IO
 
 -- alexScanTokens generates a list of tokens
 -- where: alexScanTokens :: [Tokens] -> String
 
---main = do
---  fileName <- getArgs
---  output <- readFile $ head fileName
---  let toks = alexScanTokens output
---  print $ toks!!0
---  print $ parseCalc ([toks!!0])
-
 main :: IO ()
-main = catch main' noParse
+main = do args <- getArgs
+          case args of
+            (fileName : _) -> catch (run fileName) failWith
+            []             -> die "usage: stql <program.stql>"
 
-main' = do
-  (fileName : _ ) <- getArgs 
-  sourceText <- readFile fileName
-  let parsedProg = reverse $ parseCalc (alexScanTokens sourceText)
-  (_, ((valName, FileLines (x:xs)):xss)) <- eval(parsedProg, [], [])
-  putStrLn x
+--Parse and evaluate a program. EXPORT writes each output file; the most
+--recently exported content is also echoed on stdout.
+run :: FilePath -> IO ()
+run fileName = do sourceText <- readFile fileName
+                  let parsedProg = reverse $ parseCalc (alexScanTokens sourceText)
+                  (_, env) <- eval (parsedProg, [], [])
+                  case env of
+                    ((_, FileLines (x:_)) : _) -> putStrLn x
+                    _                          -> return ()
 
-noParse :: ErrorCall -> IO ()
-noParse e = do let err =  show e
-               hPutStr stderr err
-               return ()
+--Every failure - bad arguments, a missing file, a parse error, an evaluation
+--error - is reported on stderr and exits non-zero.
+failWith :: SomeException -> IO ()
+failWith e = die (show e)

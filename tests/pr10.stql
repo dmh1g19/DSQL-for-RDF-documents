@@ -1,0 +1,9 @@
+IMPORT foo AS A;
+
+INTO out10 GET [subj,pred,obj] WHERE {A[subj,pred,-50]};
+
+IF {A[obj < 0]} THEN
+INTO out10 WRITETRUE {A[subj,http://www.cw.org/neg/#flag,-1]}
+ELSE NOTHING;
+
+EXPORT out10;

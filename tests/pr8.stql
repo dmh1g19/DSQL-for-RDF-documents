@@ -1,0 +1,5 @@
+IMPORT baz AS Z;
+
+INTO out8 GET [subj,pred,obj] FROM Z;
+
+EXPORT out8;

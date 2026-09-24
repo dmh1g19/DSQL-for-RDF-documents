@@ -1,0 +1,3 @@
+-- INTO with no GET or WRITE body
+IMPORT foo AS A;
+INTO o EXPORT o;

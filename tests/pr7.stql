@@ -1,0 +1,12 @@
+IMPORT baz AS Z;
+IMPORT foo AS A;
+
+IF {Z[obj >= 10] AND Z[obj <= 20]} THEN
+INTO out7 WRITETRUE {Z[subj,pred,obj]}
+ELSE NOTHING;
+
+IF {Z[obj = 1] OR A[obj = 50]} THEN
+INTO out7 WRITETRUE {Z[subj,pred,obj]}
+ELSE NOTHING;
+
+EXPORT out7;

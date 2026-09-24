@@ -1,0 +1,2 @@
+-- exporting something that was never built
+EXPORT nosuchvar;

@@ -1,0 +1,2 @@
+<http://example.org/data/bob> <http://xmlns.com/foaf/score> 10 .
+<http://www.cw.org/plain> <http://xmlns.com/foaf/name> 2 .
