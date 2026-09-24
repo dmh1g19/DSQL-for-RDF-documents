@@ -1,0 +1,8 @@
+@prefix ex: <http://example.org/people/> .
+@prefix foaf: <http://xmlns.com/foaf/0.1/> .
+
+ex:alice foaf:knows ex:bob ; foaf:knows ex:carol ; foaf:age 34 .
+ex:bob foaf:knows ex:carol ; foaf:age 27 .
+ex:carol foaf:knows ex:alice ; foaf:knows ex:dave ; foaf:age 41 .
+ex:dave foaf:knows ex:erin ; foaf:age 17 .
+ex:erin foaf:age 22 .

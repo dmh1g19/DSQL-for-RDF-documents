@@ -1,0 +1,5 @@
+@prefix ex: <http://example.org/people/> .
+@prefix pet: <http://example.org/pets/> .
+
+pet:rex pet:ownedBy ex:alice ; pet:species pet:dog .
+pet:tom pet:ownedBy ex:dave ; pet:species pet:cat .

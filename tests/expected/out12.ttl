@@ -1,0 +1,5 @@
+<http://example.org/people/alice> <http://xmlns.com/foaf/0.1/age> 35 .
+<http://example.org/people/bob> <http://xmlns.com/foaf/0.1/age> 28 .
+<http://example.org/people/carol> <http://xmlns.com/foaf/0.1/age> 42 .
+<http://example.org/people/dave> <http://example.org/people/minor> true .
+<http://example.org/people/erin> <http://xmlns.com/foaf/0.1/age> 23 .

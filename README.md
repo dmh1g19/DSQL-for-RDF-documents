@@ -46,6 +46,7 @@
 - 8 Language review
 - 9 Building and testing
 - 10 Changes since submission
+- 11 Running in the browser
 
 
 ## 1 Introduction
@@ -342,10 +343,12 @@ make clean
 apart again. It needs **python3-markdown** and **google-chrome**; the other targets do not.
 
 The **tests** directory holds the input turtle files, the example programs **pr1.stql** to
-**pr10.stql**, and their expected output under **tests/expected**. A program is run in a scratch
+**pr13.stql**, and their expected output under **tests/expected**. A program is run in a scratch
 directory and the file its **EXPORT** writes is compared against the recorded expectation.
 **tests/bad** holds programs that must be rejected: each one has to exit non-zero and say why.
-Failures are reported per test and **make test** exits non-zero.
+**make test** then repeats both checks through the in-memory evaluator the browser version uses
+(section 11), driven by **tests/InMemoryTest.hs**, so the two cannot disagree. Failures are
+reported per test and **make test** exits non-zero.
 
 ## 10 Changes since submission
 
@@ -359,6 +362,9 @@ Build and tooling
   so the project only built on a case insensitive filesystem.
 - A layout error in **eval** meant the project did not compile at all.
 - A makefile and the regression suite described in section 9 were added.
+- **IMPORT** and **EXPORT** no longer call **readFile** and **writeFile** directly but go through
+  a small **FileSystem** class, so the same evaluator runs against the disk on the command line
+  and against files held in memory in the browser version of section 11.
 
 Lexer and parser
 
@@ -410,3 +416,34 @@ Error handling
 - Failures were caught only for one exception type, so a missing file or a failed pattern match
   escaped uncaught, and a parse error still exited with status zero. Every failure is now
   reported on standard error with a non-zero exit status.
+
+## 11 Running in the browser
+
+The interpreter also runs in a web page, in the style of the Terrible Tiling Toolkit
+(https://github.com/dmh1g19/Terrible-Tiling-Toolkit). **Tokens**, **Grammar** and **Eval** are
+compiled to JavaScript with GHCJS as they are, and the front end in **web** is written with the
+Miso framework.
+
+The left of the page holds a query editor with syntax highlighting, a list of examples, and the
+turtle files the query can see. Those files are held in memory: **IMPORT foo** reads the file
+listed as **foo.ttl**, files can be edited, added and removed on the page, and **EXPORT** writes
+into the same set of files. **Run Query**, or Ctrl+Enter (Cmd+Enter on a Mac) in the editor,
+evaluates the query. The right of the page shows each file the query exported as a graph that can
+be dragged and zoomed, as a table of triples, or as turtle text, and offers it for download.
+Results of more than 150 triples are shown as a table and as text only. Errors are reported in
+place of the output.
+
+The examples are the programs in **tests**: **web/examples.json** gives each one a title and a
+description, and **web/mkexamples.py** bundles every program with the turtle files it imports
+into **web/Examples.hs**, so the page only ever shows programs that **make test** checks.
+**InMemory.hs** holds the in-memory files.
+
+```
+make web        # builds the page into site/, next to a copy of this report
+make serve      # serves site/ at http://localhost:8080
+make deploy     # rebuilds, then publishes site/ with Firebase Hosting
+```
+
+The build needs nix: **default.nix** takes GHCJS and Miso 1.8 from the package set the Miso
+project pins, as the Terrible Tiling Toolkit does. **make deploy** publishes to the Firebase
+project chosen once with **firebase use --add**.

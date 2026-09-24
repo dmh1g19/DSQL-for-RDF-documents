@@ -1,0 +1,9 @@
+IMPORT people AS P;
+
+IF {P[obj >= 18]} THEN
+INTO out12 WRITETRUE {P[subj,pred,obj + 1]}
+ELSE IF {P[obj < 18]} THEN
+INTO out12 WRITETRUE {P[subj,http://example.org/people/minor,true]}
+ELSE NOTHING;
+
+EXPORT out12;

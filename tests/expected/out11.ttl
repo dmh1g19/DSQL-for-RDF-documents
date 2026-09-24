@@ -1,0 +1,6 @@
+<http://example.org/people/alice> <http://xmlns.com/foaf/0.1/knows> <http://example.org/people/bob> .
+<http://example.org/people/alice> <http://xmlns.com/foaf/0.1/knows> <http://example.org/people/carol> .
+<http://example.org/people/bob> <http://xmlns.com/foaf/0.1/knows> <http://example.org/people/carol> .
+<http://example.org/people/carol> <http://xmlns.com/foaf/0.1/knows> <http://example.org/people/alice> .
+<http://example.org/people/carol> <http://xmlns.com/foaf/0.1/knows> <http://example.org/people/dave> .
+<http://example.org/people/dave> <http://xmlns.com/foaf/0.1/knows> <http://example.org/people/erin> .

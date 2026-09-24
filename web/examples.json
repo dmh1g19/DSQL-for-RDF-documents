@@ -1,0 +1,67 @@
+[
+  {
+    "program": "tests/pr11.stql",
+    "name": "Friendship network",
+    "description": "Keeps only the foaf:knows triples of people.ttl by matching the predicate against an IRI. The result is the network of who knows whom."
+  },
+  {
+    "program": "tests/pr12.stql",
+    "name": "Adults, a year older",
+    "description": "Comparisons only match numbers, so obj >= 18 picks out the adults' ages and skips the foaf:knows links. Their ages are written back one year older, and the ELSE IF branch marks the one person under 18 as a minor."
+  },
+  {
+    "program": "tests/pr13.stql",
+    "name": "Pet owners",
+    "description": "Joins two files. In the subject slot, obj IN Q keeps the people who appear as an object in pets.ttl, i.e. the pet owners, and pred is fixed to foaf:age. The second pattern adds every triple about the pets."
+  },
+  {
+    "program": "tests/pr1.stql",
+    "name": "Merge two files",
+    "description": "Gathers every triple of foo.ttl and bar.ttl into one file. Prefixed names and relative IRIs are resolved against @prefix and @base, and the output is sorted with duplicates removed."
+  },
+  {
+    "program": "tests/pr2.stql",
+    "name": "Match literal values",
+    "description": "A literal in a WHERE pattern must match exactly: this keeps the triples whose subject is http://www.cw.org/#problem2 and whose object is true, including one written as the relative IRI <#problem2>."
+  },
+  {
+    "program": "tests/pr3.stql",
+    "name": "Any of several predicates",
+    "description": "Combines three WHERE patterns with OR to keep the triples whose predicate is one of three IRIs."
+  },
+  {
+    "program": "tests/pr4.stql",
+    "name": "Link two files",
+    "description": "subj IN B in the object slot keeps the triples of foo.ttl whose object is a subject in bar.ttl, and the second pattern does the same the other way round. The matches link up into a cycle."
+  },
+  {
+    "program": "tests/pr5.stql",
+    "name": "Conditional rewrite",
+    "description": "An IF ... ELSE IF chain splits the numeric objects. Values outside 0-99 earn an inRange false triple; values inside are incremented by one and earn inRange true. Objects that are not numbers satisfy neither condition."
+  },
+  {
+    "program": "tests/pr6.stql",
+    "name": "Turtle shorthand",
+    "description": "baz.ttl abbreviates with prefixes, a predicate list (;) and an object list (,). Selecting every triple shows each one expanded into a full subject, predicate and object."
+  },
+  {
+    "program": "tests/pr7.stql",
+    "name": "Conditions over two files",
+    "description": "Two IF statements write into the same file. The first keeps baz.ttl's objects between 10 and 20. The second also flags 50s in foo.ttl, but each file keeps its own flags, so writing from Z only adds baz.ttl's 1."
+  },
+  {
+    "program": "tests/pr8.stql",
+    "name": "FROM shorthand",
+    "description": "GET ... FROM Z is shorthand for a WHERE block that matches every triple of Z."
+  },
+  {
+    "program": "tests/pr9.stql",
+    "name": "NOT and !=",
+    "description": "NOT binds tighter than AND, so this keeps the objects that are not greater than 10 and not equal to 1."
+  },
+  {
+    "program": "tests/pr10.stql",
+    "name": "Negative numbers",
+    "description": "Negative integers work as literals and in conditions: the GET matches the object -50, and the IF adds a flag triple for every subject that has a negative object."
+  }
+]

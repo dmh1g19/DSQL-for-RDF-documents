@@ -1,0 +1,6 @@
+IMPORT people AS P;
+IMPORT pets AS Q;
+
+INTO out13 GET [subj,pred,obj] WHERE {P[obj IN Q,http://xmlns.com/foaf/0.1/age,obj] AND Q[subj,pred,obj]};
+
+EXPORT out13;

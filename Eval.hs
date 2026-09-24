@@ -10,8 +10,16 @@ import System.Environment ()
 import Data.Maybe
 
 
-readTTL :: FilePath -> IO [String]
-readTTL file = readFile file >>= \content -> return (lines content)
+--Where IMPORT reads turtle files from and EXPORT writes them to, by name
+--without the .ttl extension. The command line uses the real file system; the
+--browser keeps its files in memory.
+class Monad m => FileSystem m where
+  readTurtle  :: String -> m String
+  writeTurtle :: String -> String -> m ()
+
+instance FileSystem IO where
+  readTurtle name = readFile (name ++ ".ttl")
+  writeTurtle name = writeFile (name ++ ".ttl")
 
 data Frame = AsFrame String | IntoFrame String
       deriving (Show, Eq)
@@ -39,7 +47,7 @@ type CondFlags = [(String, Flags)]
 type State = (Expr, Environment, Kontinuation)
 
 --Step every statement of the program to a value in turn
-eval :: ([Expr], Environment, Kontinuation) -> IO ([Expr], Environment)
+eval :: FileSystem m => ([Expr], Environment, Kontinuation) -> m ([Expr], Environment)
 eval ([], env, _) = return ([], env)
 eval (x:xs, env, k) = do (x', env', k') <- eval1 (x, env, k)
                          if (x' == x) && (isValue x') && (null k)
@@ -48,7 +56,7 @@ eval (x:xs, env, k) = do (x', env', k') <- eval1 (x, env, k)
 
 --Run one block (an IF branch) to a value, handing the environment and
 --continuation back to the caller
-evalBlock :: State -> IO (Environment, Kontinuation)
+evalBlock :: FileSystem m => State -> m (Environment, Kontinuation)
 evalBlock (x, env, k) = do (x', env', k') <- eval1 (x, env, k)
                            if (x' == x) && (isValue x') && (null k')
                              then return (env', k')
@@ -325,7 +333,7 @@ cleanNumeric :: String -> String
 cleanNumeric ('+':xs) = xs
 cleanNumeric x = x
 --Evaluation function
-eval1 :: State -> IO State
+eval1 :: FileSystem m => State -> m State
 
 
 --Variable
@@ -339,7 +347,7 @@ eval1 (x, env, []) | isValue x = return (x, env, [])
 eval1 (As x, env, AsFrame var:k) = return (AssignInt 0, update env var x, k)
 
 --Import As
-eval1 (Import (Var var1) (Var var2), env, k) = readTTL (var1++".ttl") >>= \content -> return (As $ FileLines (getTriples content), env, AsFrame var2:k)
+eval1 (Import (Var var1) (Var var2), env, k) = readTurtle var1 >>= \content -> return (As $ FileLines (getTriples (lines content)), env, AsFrame var2:k)
 
 
 --Into
@@ -369,7 +377,7 @@ eval1 (Write wheres, env, IntoFrame out:k) =
   return (AssignInt 0, writeContent Always out wheres env, k)
 
 --Export
-eval1 (Export (Var var) , env, k) = do writeFile (var ++ ".ttl") (content ++ "\n")
+eval1 (Export (Var var) , env, k) = do writeTurtle var (content ++ "\n")
                                        return (AssignInt 0, update env var (FileLines [content]), k)
                                     where content = exportContent var env
 

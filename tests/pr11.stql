@@ -1,0 +1,5 @@
+IMPORT people AS P;
+
+INTO out11 GET [subj,pred,obj] WHERE {P[subj,http://xmlns.com/foaf/0.1/knows,obj]};
+
+EXPORT out11;

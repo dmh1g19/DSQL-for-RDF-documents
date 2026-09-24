@@ -1,0 +1,6 @@
+<http://example.org/people/alice> <http://xmlns.com/foaf/0.1/age> 34 .
+<http://example.org/people/dave> <http://xmlns.com/foaf/0.1/age> 17 .
+<http://example.org/pets/rex> <http://example.org/pets/ownedBy> <http://example.org/people/alice> .
+<http://example.org/pets/rex> <http://example.org/pets/species> <http://example.org/pets/dog> .
+<http://example.org/pets/tom> <http://example.org/pets/ownedBy> <http://example.org/people/dave> .
+<http://example.org/pets/tom> <http://example.org/pets/species> <http://example.org/pets/cat> .
